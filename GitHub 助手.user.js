@@ -415,7 +415,6 @@
     // ============================================================
 
     const DOMRenderer = {
-        _processedDetails: [],
         _scrollTopBtn: null,
         _timeObserver: null,
 
@@ -424,6 +423,9 @@
             const style = document.createElement('style');
             style.id = 'ghhelper-css';
             style.textContent = `
+.ghhelper-row{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;width:100%!important}
+.ghhelper-left{min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:6px;overflow:hidden}
+.ghhelper-right{flex-shrink:0;display:flex;align-items:center;gap:8px}
 .ghhelper-group-win{border-left:4px solid var(--color-accent-emphasis,#1f6feb)!important;background-color:var(--color-accent-subtle,rgba(56,139,253,0.1))!important}
 .ghhelper-group-win:hover{background-color:var(--color-accent-muted,rgba(56,139,253,0.15))!important}
 .ghhelper-group-mac{border-left:4px solid var(--color-done-emphasis,#8957e5)!important;background-color:var(--color-done-subtle,rgba(137,87,229,0.1))!important}
@@ -460,10 +462,10 @@
 .ghhelper-tag-linux-ipk{color:#e3b341!important;border-color:#e3b341!important}
 .ghhelper-tag-linux-snap{color:#6366f1!important;border-color:#6366f1!important}
 .ghhelper-tag-linux-other{color:var(--color-attention-emphasis,#9e6a03)!important;border-color:var(--color-attention-emphasis,#9e6a03)!important}
-.ghhelper-proxy-container{display:inline-flex;align-items:center;flex-shrink:0;margin-left:8px}
+.ghhelper-proxy-container{display:inline-flex;align-items:center;flex-shrink:0;margin-left:8px;gap:4px}
 .ghhelper-proxy-dropdown{position:relative;display:inline-flex;align-items:center}
 .ghhelper-proxy-dropdown::after{content:"";position:absolute;top:100%;left:0;right:0;height:8px;z-index:998}
-.ghhelper-proxy-btn{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;font-weight:500;border:1px solid var(--borderColor-default,var(--color-border-default,#30363d));border-radius:6px;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;text-decoration:none!important;white-space:nowrap}
+.ghhelper-proxy-btn{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;font-weight:500;border:1px solid var(--borderColor-default,var(--color-border-default,#30363d));border-radius:6px;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;text-decoration:none!important;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis}
 .ghhelper-proxy-btn:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d));text-decoration:none!important;color:var(--button-default-fgColor-hover,var(--color-btn-hover-text,#c9d1d9))!important}
 .ghhelper-proxy-dropdown-menu{display:none;position:absolute;right:0;top:100%;z-index:999;min-width:80px;padding:4px 0;margin-top:4px;background-color:var(--overlay-bgColor,var(--color-canvas-overlay));border:1px solid var(--borderColor-default,var(--color-border-default));border-radius:6px;box-shadow:var(--shadow-floating-large,0 8px 24px rgba(140,149,159,0.2))}
 .ghhelper-proxy-dropdown:hover .ghhelper-proxy-dropdown-menu{display:block}
@@ -585,7 +587,6 @@
             if (!summary) { WARN('  processReleaseBox 跳过: 无 summary'); return; }
 
             details.dataset.ghhelperProcessed = 'true';
-            this._processedDetails.push(details);
             const titleSpan = summary.querySelector('.d-inline-flex.flex-items-center') || summary;
 
             if (StorageManager.isFeatureEnabled('groupAndSort') && titleSpan && !summary.dataset.ghhelperSelInjected) {
@@ -666,8 +667,25 @@
 
             let retryTimer = null;
             let isRefreshing = false;
-            const refresh = () => {
+
+            // 判断一次 mutation 是否由脚本自身元素引起
+            const isScriptMutation = (mutations) => {
+                return Array.from(mutations).every(m => {
+                    const nodes = [...Array.from(m.addedNodes), ...Array.from(m.removedNodes)];
+                    if (!nodes.length) return true; // 属性变化等也忽略
+                    return nodes.every(n => {
+                        if (n.nodeType !== 1) return true;
+                        return n.hasAttribute('data-ghhelper-element') || n.closest('[data-ghhelper-element]') || n.querySelector('[data-ghhelper-element]');
+                    });
+                });
+            };
+
+            const refresh = (mutations) => {
                 if (!details.open || isRefreshing) return;
+                if (mutations && isScriptMutation(mutations)) {
+                    LOG('  refresh 跳过: 仅脚本自身元素变化');
+                    return;
+                }
                 isRefreshing = true;
                 LOG('  refresh details 内容, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
                 if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
@@ -680,21 +698,21 @@
                     retryTimer = setTimeout(() => {
                         retryTimer = null;
                         LOG('  refresh 延迟重试');
-                        refresh();
+                        refresh(null);
                     }, 800);
                 }
             };
 
             details.addEventListener('toggle', () => {
                 LOG('  toggle 事件触发, details.open=' + details.open);
-                if (details.open) refresh();
+                if (details.open) refresh(null);
             });
 
             // GitHub 的 Assets 内容是动态加载的，需要监听子树变化
-            const observer = new MutationObserver(() => {
+            const observer = new MutationObserver((mutations) => {
                 if (isRefreshing) return;
-                LOG('  details MutationObserver 触发, open=' + details.open);
-                if (details.open) refresh();
+                LOG('  details MutationObserver 触发, open=' + details.open + ', mutations=' + mutations.length);
+                if (details.open) refresh(mutations);
             });
             observer.observe(details, { childList: true, subtree: true });
             LOG('  details MutationObserver 已绑定');
@@ -747,15 +765,14 @@
                     mc.setAttribute('data-ghhelper-meta', '1');
                     mc.setAttribute('data-ghhelper-element', '1');
                     mc.setAttribute('data-ghhelper-nt', '1');
-                    mc.style.cssText = 'display:inline-flex;align-items:center;flex-shrink:0;margin-left:8px;flex-wrap:wrap;gap:4px;vertical-align:middle';
-                    const leftSection = row.querySelector('.col-lg-6') || row.querySelector('.col-md-8') || row.querySelector('[class*="col-"]:not(.flex-justify-end)');
+                    mc.style.cssText = 'display:inline-flex;align-items:center;flex-shrink:0;margin-left:6px;flex-wrap:wrap;gap:4px;vertical-align:middle';
                     const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],a[href*="/attestations/"]');
                     if (nl && nl.parentNode) {
                         nl.parentNode.insertBefore(mc, nl.nextSibling);
-                    } else if (leftSection) {
-                        leftSection.appendChild(mc);
                     } else {
-                        row.appendChild(mc);
+                        const leftSection = row.querySelector('.col-lg-6') || row.querySelector('.col-md-8') || row.querySelector('[class*="col-"]:not(.flex-justify-end)');
+                        if (leftSection) leftSection.appendChild(mc);
+                        else row.appendChild(mc);
                     }
                 }
                 mc.querySelectorAll('[data-ghhelper-tag]').forEach(t => t.remove());
@@ -849,28 +866,37 @@
             const rows = Array.from(detailsElem.querySelectorAll('li')).filter(r =>
                 r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]'));
             LOG('    processProxyButtons: 有效行数=' + rows.length);
+            if (!rows.length) return;
+
+            const disp = ProxyManager.getDisplayProxies('download');
+            const all = [...disp.pinned, ...disp.overflow];
+            if (!all.length) { LOG('    processProxyButtons: 无可用加速源'); return; }
+
             rows.forEach(row => {
                 const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
                 if (!nl) return;
                 const href = nl.getAttribute('href');
                 if (!href) return;
 
-                // 移除旧的加速容器
+                const fn = this.getFileNameFromLink(nl);
                 let container = row.querySelector('[data-ghhelper-proxy]');
+                const prevCount = container ? parseInt(container.dataset.proxyCount || '0') : 0;
+                if (container && prevCount === all.length) {
+                    LOG('    processProxyButtons: ' + fn + ' 加速源数量未变，跳过');
+                    return;
+                }
                 if (container) container.remove();
-
-                const disp = ProxyManager.getDisplayProxies('download');
-                const all = [...disp.pinned, ...disp.overflow];
-                if (!all.length) { LOG('    processProxyButtons: 无可用加速源'); return; }
 
                 container = document.createElement('span');
                 container.setAttribute('data-ghhelper-proxy', '1');
                 container.setAttribute('data-ghhelper-element', '1');
                 container.setAttribute('data-ghhelper-nt', '1');
                 container.className = 'ghhelper-proxy-container';
+                container.dataset.proxyCount = String(all.length);
 
                 // 优先展示前 N 个为独立按钮，其余收入下拉
-                const maxPinned = Math.min(all.length, Math.max(1, StorageManager.getMaxDisplay() - 1));
+                const maxDisplay = StorageManager.getMaxDisplay();
+                const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
                 const pinned = all.slice(0, maxPinned);
                 const overflow = all.slice(maxPinned);
 
@@ -887,8 +913,9 @@
                 if (overflow.length) {
                     const dd = document.createElement('span');
                     dd.className = 'ghhelper-proxy-dropdown';
-                    const db = document.createElement('span');
+                    const db = document.createElement('a');
                     db.className = 'ghhelper-proxy-btn'; db.textContent = '加速 ▼';
+                    db.href = 'javascript:void(0)';
                     const dm = document.createElement('div');
                     dm.className = 'ghhelper-proxy-dropdown-menu';
                     overflow.forEach(p => {
@@ -904,20 +931,19 @@
                 }
 
                 const rightSection = row.querySelector('.col-md-6') || row.querySelector('.flex-auto.flex-justify-end') || row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
-                const metaContainer = row.querySelector('[data-ghhelper-meta]');
                 if (rightSection) rightSection.appendChild(container);
-                else if (metaContainer) metaContainer.appendChild(container);
                 else row.appendChild(container);
 
-                LOG('    processProxyButtons: 已为 ' + this.getFileNameFromLink(nl) + ' 添加加速按钮, 总数=' + all.length + ', 平铺=' + pinned.length + ', 下拉=' + overflow.length);
+                LOG('    processProxyButtons: 已为 ' + fn + ' 添加加速按钮, 总数=' + all.length + ', 平铺=' + pinned.length + ', 下拉=' + overflow.length);
                 const xb = row.querySelector('.XIU2-RS');
                 if (xb) xb.style.display = 'none';
             });
         },
 
         reprocessAll() {
-            LOG('  reprocessAll 调用, 已处理 details 数:', this._processedDetails.length);
-            this._processedDetails.forEach(d => {
+            const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]');
+            LOG('  reprocessAll 调用, 已处理 details 数:', targets.length);
+            targets.forEach(d => {
                 d.dataset.ghhelperVRCount = '0';
                 if (d.open) {
                     this.formatAndSortUI(d, true);
