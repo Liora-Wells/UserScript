@@ -19,6 +19,11 @@
 (function () {
     'use strict';
 
+    const DEBUG = true;
+    const LOG = (...args) => { if (DEBUG) console.log('[GH助手]', ...args); };
+    const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
+    const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
+
     // ============================================================
     // 1. 配置常量
     // ============================================================
@@ -177,6 +182,7 @@
             proxy.enabled = true;
             custom.push(proxy);
             StorageManager.setProxies(custom);
+            LOG('ProxyManager.addCustom:', proxy.name, 'id:', proxy.id, '当前自定义源总数:', custom.length);
             return proxy;
         },
 
@@ -192,9 +198,11 @@
         deleteCustom(id) {
             const custom = this.getCustom();
             const idx = custom.findIndex(p => p.id === id);
+            LOG('ProxyManager.deleteCustom: id=' + id + ', 找到索引=' + idx + ', 总数=' + custom.length);
             if (idx === -1) return false;
             custom.splice(idx, 1);
             StorageManager.setProxies(custom);
+            LOG('ProxyManager.deleteCustom: 删除成功, 剩余=' + custom.length);
             return true;
         },
 
@@ -563,15 +571,19 @@
         },
 
         processReleaseBox(details) {
-            if (details.dataset.ghhelperProcessed === 'true') return;
+            if (details.dataset.ghhelperProcessed === 'true') {
+                LOG('  processReleaseBox 跳过: 已处理过');
+                return;
+            }
 
             const repoInfo = this.getRepoInfo();
-            if (!repoInfo) return;
+            if (!repoInfo) { WARN('  processReleaseBox 跳过: 无 repoInfo'); return; }
             const tagName = this.findTagName(details);
-            if (!tagName) return;
+            if (!tagName) { WARN('  processReleaseBox 跳过: 未找到 tagName'); return; }
+            LOG('  processReleaseBox 成功, tagName:', tagName);
 
             const summary = details.querySelector('summary');
-            if (!summary) return;
+            if (!summary) { WARN('  processReleaseBox 跳过: 无 summary'); return; }
 
             details.dataset.ghhelperProcessed = 'true';
             this._processedDetails.push(details);
@@ -653,6 +665,7 @@
 
             details.addEventListener('toggle', () => {
                 if (details.open) {
+                    LOG('  toggle 事件: details 展开, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
                     if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
                     if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
                 }
@@ -662,6 +675,7 @@
         formatAndSortUI(detailsElem, force) {
             const validRows = Array.from(detailsElem.querySelectorAll('li')).filter(r =>
                 r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],a[href*="/attestations/"]'));
+            LOG('    formatAndSortUI: 有效行数=' + validRows.length + ', force=' + !!force);
             if (!validRows.length) return;
             const prev = parseInt(detailsElem.dataset.ghhelperVRCount || '0');
             if (!force && validRows.length === prev) return;
@@ -704,7 +718,7 @@
                     mc.setAttribute('data-ghhelper-nt', '1');
                     mc.style.cssText = 'display:flex;align-items:center;flex-shrink:0;margin-right:12px;flex-wrap:wrap;gap:4px';
                     const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
-                    if (rs) { const sw = rs.querySelector('[class*="flex-1"]'); if (sw) sw.insertBefore(mc, sw.firstChild); else rs.insertBefore(mc, rs.firstChild); }
+                    if (rs) rs.appendChild(mc);
                     else row.appendChild(mc);
                 }
                 mc.querySelectorAll('[data-ghhelper-tag]').forEach(t => t.remove());
@@ -788,7 +802,7 @@
                         mc.setAttribute('data-ghhelper-nt', '1');
                         mc.style.cssText = 'display:flex;align-items:center;flex-shrink:0;margin-right:12px;flex-wrap:wrap;gap:4px';
                         const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
-                        if (rs) rs.insertBefore(mc, rs.firstChild); else row.appendChild(mc);
+                        if (rs) rs.appendChild(mc); else row.appendChild(mc);
                     }
                     mc.appendChild(cs);
                 });
@@ -854,7 +868,7 @@
 
         findTagName(detailsElem) {
             const m = window.location.pathname.match(/\/releases\/tag\/([^/?]+)/);
-            if (m) return decodeURIComponent(m[1]);
+            if (m) { LOG('    findTagName: 从URL匹配到:', m[1]); return decodeURIComponent(m[1]); }
 
             // 尝试从最近父级容器中查找 tag 链接
             const selectors = [
@@ -868,8 +882,9 @@
                 if (!c) continue;
                 const tl = c.querySelector('a[href*="/releases/tag/"],a[href*="/tag/"]');
                 if (tl) {
+                    LOG('    findTagName: 通过选择器 "' + sel + '" 找到 tag 链接:', tl.getAttribute('href'));
                     const m2 = tl.getAttribute('href').match(/\/(?:releases\/)?tag\/([^/?]+)/);
-                    if (m2) return decodeURIComponent(m2[1]);
+                    if (m2) { LOG('    findTagName: 匹配到:', m2[1]); return decodeURIComponent(m2[1]); }
                 }
             }
 
@@ -877,9 +892,10 @@
             const titleEl = document.querySelector('[data-test-selector="release-card"] a[href*="/releases/tag/"], [data-view-component="true"] a[href*="/releases/tag/"]');
             if (titleEl) {
                 const m3 = titleEl.getAttribute('href').match(/\/(?:releases\/)?tag\/([^/?]+)/);
-                if (m3) return decodeURIComponent(m3[1]);
+                if (m3) { LOG('    findTagName: 页面兜底匹配到:', m3[1]); return decodeURIComponent(m3[1]); }
             }
 
+            WARN('    findTagName: 所有方法均未找到 tagName, pathname:', window.location.pathname);
             return null;
         },
 
@@ -965,12 +981,14 @@
         _activeTab: 'proxies',
 
         show() {
+            LOG('SettingsPanel.show 调用');
             if (this._overlay) {
                 this._overlay.style.display = 'flex';
                 this.renderTab(this._activeTab);
                 return;
             }
             this._overlay = this.create();
+            LOG('SettingsPanel overlay 创建完成, 追加到 body');
             document.body.appendChild(this._overlay);
             this.renderTab('proxies');
         },
@@ -1059,6 +1077,7 @@
             body.querySelectorAll('.ghhelper-btn-danger').forEach(btn => {
                 btn.addEventListener('click', function () {
                     const id = this.dataset.proxyId;
+                    LOG('SettingsPanel 删除按钮点击, proxyId:', id);
                     ProxyManager.deleteCustom(id);
                     SettingsPanel.renderTab('proxies');
                 });
@@ -1097,7 +1116,8 @@
             document.getElementById('ghhelper-save-proxy').addEventListener('click', () => {
                 const name = document.getElementById('ghhelper-new-name').value.trim();
                 const url = document.getElementById('ghhelper-new-url').value.trim();
-                if (!name || !url) return;
+                LOG('SettingsPanel 保存代理: name=' + name + ', url=' + url);
+                if (!name || !url) { WARN('保存代理: name或url为空'); return; }
                 ProxyManager.addCustom({
                     name, url,
                     type: document.getElementById('ghhelper-new-type').value,
@@ -1179,6 +1199,7 @@
     let _menuIds = [];
 
     function registerMenus() {
+        LOG('registerMenus 调用, GM_registerMenuCommand 可用:', typeof GM_registerMenuCommand !== 'undefined');
         const features = StorageManager.getFeatures();
         const items = [
             { key: 'groupAndSort', label: '文件分组排序' },
@@ -1227,23 +1248,41 @@
     const RETRY_DELAY = 800;
 
     function processAllDetails() {
-        if (!/^\/[^/]+\/[^/]+\/releases/.test(window.location.pathname)) return;
+        const pathname = window.location.pathname;
+        LOG('processAllDetails 调用, pathname:', pathname);
+        if (!/^\/[^/]+\/[^/]+\/releases/.test(pathname)) {
+            LOG('  跳过: 非 releases 页面');
+            return;
+        }
         const repoInfo = DOMRenderer.getRepoInfo();
-        if (!repoInfo) return;
+        if (!repoInfo) {
+            WARN('  跳过: 无法获取 repoInfo');
+            return;
+        }
+        LOG('  仓库:', repoInfo.owner + '/' + repoInfo.repo);
 
         if (StorageManager.isFeatureEnabled('collapsibleNotes')) {
             DOMRenderer.processReleaseNotes();
         }
 
-        document.querySelectorAll('details').forEach(details => {
+        const detailsList = document.querySelectorAll('details');
+        LOG('  发现 details 元素:', detailsList.length, '个');
+        let assetCount = 0;
+        detailsList.forEach(details => {
             const summary = details.querySelector('summary');
-            if (summary && /Assets/i.test(summary.textContent)) {
+            const hasDownloadLink = !!details.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
+            const isAssetsByText = summary && /Assets|资源|资产/i.test(summary.textContent);
+            if (hasDownloadLink || isAssetsByText) {
+                assetCount++;
+                LOG('  处理 Assets details, hasDownloadLink=' + hasDownloadLink + ', isAssetsByText=' + isAssetsByText + ', 已处理标记:', details.dataset.ghhelperProcessed);
                 DOMRenderer.processReleaseBox(details);
             }
         });
+        LOG('  匹配到 Assets 的 details:', assetCount, '个');
     }
 
     function init() {
+        LOG('init 调用, 重试次数:', _initRetryCount, 'pathname:', window.location.pathname);
         DOMRenderer.injectCSS();
         DOMRenderer.injectGearButton();
 
@@ -1261,6 +1300,7 @@
         if (_initRetryCount < MAX_RETRY) {
             _initRetryCount++;
             setTimeout(() => {
+                LOG('延迟重试 processAllDetails, 第', _initRetryCount, '次');
                 processAllDetails();
                 _initRetryCount = 0;
             }, RETRY_DELAY);
@@ -1273,10 +1313,12 @@
             if (debounceTimer) return;
             debounceTimer = setTimeout(() => {
                 debounceTimer = null;
+                LOG('MutationObserver 触发 processAllDetails');
                 processAllDetails();
             }, 300);
         });
         observer.observe(document.body, { childList: true, subtree: true });
+        LOG('MutationObserver 已启动');
         return observer;
     }
 
@@ -1291,5 +1333,10 @@
         window.addEventListener('popstate', () => window.dispatchEvent(new Event('urlchange')));
     }
     window.addEventListener('urlchange', init);
+
+    LOG('=== GitHub 助手脚本加载完成, 版本 1.0.0 ===');
+    LOG('  当前页面:', window.location.href);
+    LOG('  功能状态:', JSON.stringify(StorageManager.getFeatures()));
+    LOG('  GM 函数可用: getValue=' + (typeof GM_getValue !== 'undefined') + ', setValue=' + (typeof GM_setValue !== 'undefined') + ', registerMenu=' + (typeof GM_registerMenuCommand !== 'undefined'));
 
 })();
