@@ -239,12 +239,11 @@
             const builtin = BUILTIN_PROXIES.filter(p => p.enabled && (p.type === type || p.type === 'all'));
             const result = { pinned: [], overflow: [] };
 
+            // 自定义源优先；内置源补齐，超出部分放入下拉
             custom.forEach(p => result.pinned.push(p));
-            const remaining = maxDisplay - result.pinned.length;
-            if (remaining > 0) {
-                builtin.slice(0, remaining).forEach(p => result.pinned.push(p));
-            }
-            builtin.slice(remaining > 0 ? remaining : 0).forEach(p => result.overflow.push(p));
+            const remaining = Math.max(0, maxDisplay - result.pinned.length);
+            builtin.slice(0, remaining).forEach(p => result.pinned.push(p));
+            builtin.slice(remaining).forEach(p => result.overflow.push(p));
 
             return result;
         }
@@ -461,14 +460,14 @@
 .ghhelper-tag-linux-ipk{color:#e3b341!important;border-color:#e3b341!important}
 .ghhelper-tag-linux-snap{color:#6366f1!important;border-color:#6366f1!important}
 .ghhelper-tag-linux-other{color:var(--color-attention-emphasis,#9e6a03)!important;border-color:var(--color-attention-emphasis,#9e6a03)!important}
-.ghhelper-proxy-row{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center;margin-left:8px;flex-shrink:0}
-.ghhelper-proxy-btn{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;font-weight:500;border:1px solid var(--borderColor-default,var(--color-border-default,#30363d));border-radius:6px;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;text-decoration:none!important;white-space:nowrap}
-.ghhelper-proxy-btn:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d));text-decoration:none!important;color:var(--button-default-fgColor-hover,var(--color-btn-hover-text,#c9d1d9))!important}
+.ghhelper-proxy-container{display:inline-flex;align-items:center;flex-shrink:0;margin-left:8px}
 .ghhelper-proxy-dropdown{position:relative;display:inline-flex;align-items:center}
 .ghhelper-proxy-dropdown::after{content:"";position:absolute;top:100%;left:0;right:0;height:8px;z-index:998}
+.ghhelper-proxy-btn{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;font-weight:500;border:1px solid var(--borderColor-default,var(--color-border-default,#30363d));border-radius:6px;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;text-decoration:none!important;white-space:nowrap}
+.ghhelper-proxy-btn:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d));text-decoration:none!important;color:var(--button-default-fgColor-hover,var(--color-btn-hover-text,#c9d1d9))!important}
 .ghhelper-proxy-dropdown-menu{display:none;position:absolute;right:0;top:100%;z-index:999;min-width:80px;padding:4px 0;margin-top:4px;background-color:var(--overlay-bgColor,var(--color-canvas-overlay));border:1px solid var(--borderColor-default,var(--color-border-default));border-radius:6px;box-shadow:var(--shadow-floating-large,0 8px 24px rgba(140,149,159,0.2))}
 .ghhelper-proxy-dropdown:hover .ghhelper-proxy-dropdown-menu{display:block}
-.ghhelper-proxy-menu-item{display:block!important;padding:4px 16px!important;margin:0!important;border:none!important;border-radius:0!important;background:transparent!important;color:var(--fgColor-default,var(--color-fg-default))!important;text-decoration:none!important;font-size:12px!important;text-align:center!important;line-height:1.5!important}
+.ghhelper-proxy-menu-item{display:block!important;padding:4px 16px!important;margin:0!important;border:none!important;border-radius:0!important;background:transparent!important;color:var(--fgColor-default,var(--color-fg-default))!important;text-decoration:none!important;font-size:12px!important;text-align:center!important;line-height:1.5!important;white-space:nowrap}
 .ghhelper-proxy-menu-item:hover{background-color:var(--controlAction-bgColor-hover,var(--color-action-list-item-default-hover-bg))!important;text-decoration:none!important}
 .ghhelper-os-select,.ghhelper-arch-select{appearance:auto;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));border-radius:6px;color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;font-size:12px;font-weight:500;line-height:20px;padding:3px 8px;margin-left:8px}
 .ghhelper-os-select:hover,.ghhelper-arch-select:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
@@ -665,11 +664,22 @@
                 titleSpan.appendChild(btn);
             }
 
+            let retryTimer = null;
             const refresh = () => {
                 if (!details.open) return;
                 LOG('  refresh details 内容, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
                 if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
                 if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
+
+                // 如果展开后还没有下载链接，延迟重试（GitHub 异步加载）
+                const hasLinks = details.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
+                if (!hasLinks && !retryTimer) {
+                    retryTimer = setTimeout(() => {
+                        retryTimer = null;
+                        LOG('  refresh 延迟重试');
+                        refresh();
+                    }, 800);
+                }
             };
 
             details.addEventListener('toggle', () => {
@@ -733,10 +743,16 @@
                     mc.setAttribute('data-ghhelper-meta', '1');
                     mc.setAttribute('data-ghhelper-element', '1');
                     mc.setAttribute('data-ghhelper-nt', '1');
-                    mc.style.cssText = 'display:flex;align-items:center;flex-shrink:0;margin-right:12px;flex-wrap:wrap;gap:4px';
-                    const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
-                    if (rs) rs.appendChild(mc);
-                    else row.appendChild(mc);
+                    mc.style.cssText = 'display:inline-flex;align-items:center;flex-shrink:0;margin-left:8px;flex-wrap:wrap;gap:4px;vertical-align:middle';
+                    const leftSection = row.querySelector('.col-lg-6') || row.querySelector('.col-md-8') || row.querySelector('[class*="col-"]:not(.flex-justify-end)');
+                    const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],a[href*="/attestations/"]');
+                    if (nl && nl.parentNode) {
+                        nl.parentNode.insertBefore(mc, nl.nextSibling);
+                    } else if (leftSection) {
+                        leftSection.appendChild(mc);
+                    } else {
+                        row.appendChild(mc);
+                    }
                 }
                 mc.querySelectorAll('[data-ghhelper-tag]').forEach(t => t.remove());
                 if (row._ghg.showTag) {
@@ -830,53 +846,69 @@
                 r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]'));
             LOG('    processProxyButtons: 有效行数=' + rows.length);
             rows.forEach(row => {
-                    const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
-                    if (!nl) return;
-                    const href = nl.getAttribute('href');
-                    if (!href) return;
-                    const existing = row.querySelector('[data-ghhelper-proxy]');
-                    if (existing) existing.remove();
-                    const disp = ProxyManager.getDisplayProxies('download');
-                    const all = [...disp.pinned, ...disp.overflow];
-                    if (!all.length) { LOG('    processProxyButtons: 无可用加速源'); return; }
-                    const container = document.createElement('span');
-                    container.setAttribute('data-ghhelper-proxy', '1');
-                    container.setAttribute('data-ghhelper-element', '1');
-                    container.setAttribute('data-ghhelper-nt', '1');
-                    container.className = 'ghhelper-proxy-row';
-                    disp.pinned.forEach(p => {
-                        const url = ProxyManager.buildUrl(p, href, 'download');
-                        const btn = document.createElement('a');
-                        btn.className = 'ghhelper-proxy-btn';
-                        btn.href = url; btn.target = '_blank'; btn.rel = 'noopener noreferrer';
-                        btn.textContent = p.name;
-                        btn.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '');
-                        container.appendChild(btn);
-                    });
-                    if (disp.overflow.length) {
-                        const dd = document.createElement('span');
-                        dd.className = 'ghhelper-proxy-dropdown';
-                        const db = document.createElement('span');
-                        db.className = 'ghhelper-proxy-btn'; db.textContent = '加速 ▼';
-                        const dm = document.createElement('div');
-                        dm.className = 'ghhelper-proxy-dropdown-menu';
-                        disp.overflow.forEach(p => {
-                            const url = ProxyManager.buildUrl(p, href, 'download');
-                            const lk = document.createElement('a');
-                            lk.className = 'ghhelper-proxy-menu-item';
-                            lk.href = url; lk.target = '_blank'; lk.rel = 'noopener noreferrer';
-                            lk.textContent = p.name;
-                            lk.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '');
-                            dm.appendChild(lk);
-                        });
-                        dd.appendChild(db); dd.appendChild(dm); container.appendChild(dd);
-                    }
-                    const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
-                    if (rs) rs.appendChild(container); else row.appendChild(container);
-                    LOG('    processProxyButtons: 已为 ' + this.getFileNameFromLink(nl) + ' 添加加速按钮');
-                    const xb = row.querySelector('.XIU2-RS');
-                    if (xb) xb.style.display = 'none';
+                const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
+                if (!nl) return;
+                const href = nl.getAttribute('href');
+                if (!href) return;
+
+                // 移除旧的加速容器
+                let container = row.querySelector('[data-ghhelper-proxy]');
+                if (container) container.remove();
+
+                const disp = ProxyManager.getDisplayProxies('download');
+                const all = [...disp.pinned, ...disp.overflow];
+                if (!all.length) { LOG('    processProxyButtons: 无可用加速源'); return; }
+
+                container = document.createElement('span');
+                container.setAttribute('data-ghhelper-proxy', '1');
+                container.setAttribute('data-ghhelper-element', '1');
+                container.setAttribute('data-ghhelper-nt', '1');
+                container.className = 'ghhelper-proxy-container';
+
+                // 优先展示前 N 个为独立按钮，其余收入下拉
+                const maxPinned = Math.min(all.length, Math.max(1, StorageManager.getMaxDisplay() - 1));
+                const pinned = all.slice(0, maxPinned);
+                const overflow = all.slice(maxPinned);
+
+                pinned.forEach(p => {
+                    const url = ProxyManager.buildUrl(p, href, 'download');
+                    const btn = document.createElement('a');
+                    btn.className = 'ghhelper-proxy-btn';
+                    btn.href = url; btn.target = '_blank'; btn.rel = 'noopener noreferrer';
+                    btn.textContent = p.name;
+                    btn.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '');
+                    container.appendChild(btn);
                 });
+
+                if (overflow.length) {
+                    const dd = document.createElement('span');
+                    dd.className = 'ghhelper-proxy-dropdown';
+                    const db = document.createElement('span');
+                    db.className = 'ghhelper-proxy-btn'; db.textContent = '加速 ▼';
+                    const dm = document.createElement('div');
+                    dm.className = 'ghhelper-proxy-dropdown-menu';
+                    overflow.forEach(p => {
+                        const url = ProxyManager.buildUrl(p, href, 'download');
+                        const lk = document.createElement('a');
+                        lk.className = 'ghhelper-proxy-menu-item';
+                        lk.href = url; lk.target = '_blank'; lk.rel = 'noopener noreferrer';
+                        lk.textContent = p.name;
+                        lk.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '');
+                        dm.appendChild(lk);
+                    });
+                    dd.appendChild(db); dd.appendChild(dm); container.appendChild(dd);
+                }
+
+                const rightSection = row.querySelector('.col-md-6') || row.querySelector('.flex-auto.flex-justify-end') || row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
+                const metaContainer = row.querySelector('[data-ghhelper-meta]');
+                if (rightSection) rightSection.appendChild(container);
+                else if (metaContainer) metaContainer.appendChild(container);
+                else row.appendChild(container);
+
+                LOG('    processProxyButtons: 已为 ' + this.getFileNameFromLink(nl) + ' 添加加速按钮, 总数=' + all.length + ', 平铺=' + pinned.length + ', 下拉=' + overflow.length);
+                const xb = row.querySelector('.XIU2-RS');
+                if (xb) xb.style.display = 'none';
+            });
         },
 
         reprocessAll() {
