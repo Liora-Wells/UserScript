@@ -606,6 +606,7 @@
                 osSel.addEventListener('click', e => e.stopPropagation());
                 osSel.addEventListener('mousedown', e => e.stopPropagation());
                 osSel.addEventListener('change', () => {
+                    LOG('  OS 选择器 change: ' + osSel.value);
                     StorageManager.setSelectedOS(osSel.value);
                     document.querySelectorAll('.ghhelper-os-select').forEach(s => s.value = osSel.value);
                     this.reprocessAll();
@@ -627,6 +628,7 @@
                 archSel.addEventListener('click', e => e.stopPropagation());
                 archSel.addEventListener('mousedown', e => e.stopPropagation());
                 archSel.addEventListener('change', () => {
+                    LOG('  架构选择器 change: ' + archSel.value);
                     StorageManager.setSelectedArch(archSel.value);
                     document.querySelectorAll('.ghhelper-arch-select').forEach(s => s.value = archSel.value);
                     this.reprocessAll();
@@ -663,22 +665,37 @@
                 titleSpan.appendChild(btn);
             }
 
+            const refresh = () => {
+                if (!details.open) return;
+                LOG('  refresh details 内容, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
+                if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
+                if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
+            };
+
             details.addEventListener('toggle', () => {
-                if (details.open) {
-                    LOG('  toggle 事件: details 展开, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
-                    if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
-                    if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
-                }
+                LOG('  toggle 事件触发, details.open=' + details.open);
+                if (details.open) refresh();
             });
+
+            // GitHub 的 Assets 内容是动态加载的，需要监听子树变化
+            const observer = new MutationObserver(() => {
+                LOG('  details MutationObserver 触发, open=' + details.open);
+                if (details.open) refresh();
+            });
+            observer.observe(details, { childList: true, subtree: true });
+            LOG('  details MutationObserver 已绑定');
         },
 
         formatAndSortUI(detailsElem, force) {
             const validRows = Array.from(detailsElem.querySelectorAll('li')).filter(r =>
                 r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],a[href*="/attestations/"]'));
-            LOG('    formatAndSortUI: 有效行数=' + validRows.length + ', force=' + !!force);
+            LOG('    formatAndSortUI: 有效行数=' + validRows.length + ', force=' + !!force + ', 上次计数=' + detailsElem.dataset.ghhelperVRCount);
             if (!validRows.length) return;
             const prev = parseInt(detailsElem.dataset.ghhelperVRCount || '0');
-            if (!force && validRows.length === prev) return;
+            if (!force && validRows.length === prev) {
+                LOG('    formatAndSortUI: 行数未变，跳过');
+                return;
+            }
             detailsElem.dataset.ghhelperVRCount = validRows.length;
 
             const parent = validRows[0].parentNode;
@@ -809,8 +826,10 @@
         },
 
         processProxyButtons(detailsElem) {
-            Array.from(detailsElem.querySelectorAll('li')).filter(r =>
-                r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]')).forEach(row => {
+            const rows = Array.from(detailsElem.querySelectorAll('li')).filter(r =>
+                r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]'));
+            LOG('    processProxyButtons: 有效行数=' + rows.length);
+            rows.forEach(row => {
                     const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
                     if (!nl) return;
                     const href = nl.getAttribute('href');
@@ -819,7 +838,7 @@
                     if (existing) existing.remove();
                     const disp = ProxyManager.getDisplayProxies('download');
                     const all = [...disp.pinned, ...disp.overflow];
-                    if (!all.length) return;
+                    if (!all.length) { LOG('    processProxyButtons: 无可用加速源'); return; }
                     const container = document.createElement('span');
                     container.setAttribute('data-ghhelper-proxy', '1');
                     container.setAttribute('data-ghhelper-element', '1');
@@ -854,15 +873,20 @@
                     }
                     const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
                     if (rs) rs.appendChild(container); else row.appendChild(container);
+                    LOG('    processProxyButtons: 已为 ' + this.getFileNameFromLink(nl) + ' 添加加速按钮');
                     const xb = row.querySelector('.XIU2-RS');
                     if (xb) xb.style.display = 'none';
                 });
         },
 
         reprocessAll() {
+            LOG('  reprocessAll 调用, 已处理 details 数:', this._processedDetails.length);
             this._processedDetails.forEach(d => {
                 d.dataset.ghhelperVRCount = '0';
-                if (d.open) this.formatAndSortUI(d, true);
+                if (d.open) {
+                    this.formatAndSortUI(d, true);
+                    if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(d);
+                }
             });
         },
 
