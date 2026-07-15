@@ -564,8 +564,6 @@
 
         processReleaseBox(details) {
             if (details.dataset.ghhelperProcessed === 'true') return;
-            details.dataset.ghhelperProcessed = 'true';
-            this._processedDetails.push(details);
 
             const repoInfo = this.getRepoInfo();
             if (!repoInfo) return;
@@ -574,6 +572,9 @@
 
             const summary = details.querySelector('summary');
             if (!summary) return;
+
+            details.dataset.ghhelperProcessed = 'true';
+            this._processedDetails.push(details);
             const titleSpan = summary.querySelector('.d-inline-flex.flex-items-center') || summary;
 
             if (StorageManager.isFeatureEnabled('groupAndSort') && titleSpan && !summary.dataset.ghhelperSelInjected) {
@@ -854,11 +855,31 @@
         findTagName(detailsElem) {
             const m = window.location.pathname.match(/\/releases\/tag\/([^/?]+)/);
             if (m) return decodeURIComponent(m[1]);
-            const c = detailsElem.closest('section,.Box,.js-details-container,div[data-test-selector="release-card"]');
-            if (c) {
-                const tl = c.querySelector('a[href*="/releases/tag/"]');
-                if (tl) { const m2 = tl.getAttribute('href').match(/\/releases\/tag\/([^/?]+)/); if (m2) return decodeURIComponent(m2[1]); }
+
+            // 尝试从最近父级容器中查找 tag 链接
+            const selectors = [
+                'section,.Box,.js-details-container,div[data-test-selector="release-card"]',
+                '[class*="release"]',
+                '.Box-row',
+                'article'
+            ];
+            for (const sel of selectors) {
+                const c = detailsElem.closest(sel);
+                if (!c) continue;
+                const tl = c.querySelector('a[href*="/releases/tag/"],a[href*="/tag/"]');
+                if (tl) {
+                    const m2 = tl.getAttribute('href').match(/\/(?:releases\/)?tag\/([^/?]+)/);
+                    if (m2) return decodeURIComponent(m2[1]);
+                }
             }
+
+            // 兜底：从页面标题中提取
+            const titleEl = document.querySelector('[data-test-selector="release-card"] a[href*="/releases/tag/"], [data-view-component="true"] a[href*="/releases/tag/"]');
+            if (titleEl) {
+                const m3 = titleEl.getAttribute('href').match(/\/(?:releases\/)?tag\/([^/?]+)/);
+                if (m3) return decodeURIComponent(m3[1]);
+            }
+
             return null;
         },
 
@@ -1152,7 +1173,45 @@
     };
 
     // ============================================================
-    // 7. 中文化兼容层 (CompatibilityLayer)
+    // 7. GM 菜单注册
+    // ============================================================
+
+    let _menuIds = [];
+
+    function registerMenus() {
+        const features = StorageManager.getFeatures();
+        const items = [
+            { key: 'groupAndSort', label: '文件分组排序' },
+            { key: 'downloadCount', label: '显示下载量' },
+            { key: 'replaceTime', label: '精确时间替换' },
+            { key: 'collapsibleNotes', label: '可折叠更新日志' },
+            { key: 'proxyButtons', label: '加速下载按钮' },
+            { key: 'scrollToTop', label: '回到顶部按钮' }
+        ];
+        items.forEach(item => {
+            const id = GM_registerMenuCommand(
+                (features[item.key] ? '✓ ' : '✗ ') + item.label,
+                () => {
+                    const f = StorageManager.getFeatures();
+                    f[item.key] = !f[item.key];
+                    StorageManager.setFeatures(f);
+                    unregisterMenus();
+                    registerMenus();
+                }
+            );
+            _menuIds.push(id);
+        });
+        const id = GM_registerMenuCommand('打开设置面板', () => SettingsPanel.show());
+        _menuIds.push(id);
+    }
+
+    function unregisterMenus() {
+        _menuIds.forEach(id => GM_unregisterMenuCommand(id));
+        _menuIds = [];
+    }
+
+    // ============================================================
+    // 8. 中文化兼容层 (CompatibilityLayer)
     // ============================================================
 
     // 所有注入的 DOM 元素都标记了 data-ghhelper-nt="1"，
@@ -1160,24 +1219,15 @@
     // 此外，所有 CSS 类名使用 ghhelper- 前缀，避免与中文化脚本冲突。
 
     // ============================================================
-    // 8. 初始化入口
+    // 9. 初始化入口
     // ============================================================
 
-    function init() {
-        DOMRenderer.injectCSS();
-        DOMRenderer.injectGearButton();
+    let _initRetryCount = 0;
+    const MAX_RETRY = 5;
+    const RETRY_DELAY = 800;
 
-        if (StorageManager.isFeatureEnabled('scrollToTop')) {
-            DOMRenderer.injectScrollToTop();
-        }
-
-        if (StorageManager.isFeatureEnabled('replaceTime')) {
-            DOMRenderer.replaceRelativeTimes();
-            DOMRenderer.startTimeObserver();
-        }
-
+    function processAllDetails() {
         if (!/^\/[^/]+\/[^/]+\/releases/.test(window.location.pathname)) return;
-
         const repoInfo = DOMRenderer.getRepoInfo();
         if (!repoInfo) return;
 
@@ -1193,7 +1243,46 @@
         });
     }
 
+    function init() {
+        DOMRenderer.injectCSS();
+        DOMRenderer.injectGearButton();
+
+        if (StorageManager.isFeatureEnabled('scrollToTop')) {
+            DOMRenderer.injectScrollToTop();
+        }
+
+        if (StorageManager.isFeatureEnabled('replaceTime')) {
+            DOMRenderer.replaceRelativeTimes();
+            DOMRenderer.startTimeObserver();
+        }
+
+        processAllDetails();
+
+        if (_initRetryCount < MAX_RETRY) {
+            _initRetryCount++;
+            setTimeout(() => {
+                processAllDetails();
+                _initRetryCount = 0;
+            }, RETRY_DELAY);
+        }
+    }
+
+    function startDetailsObserver() {
+        let debounceTimer = null;
+        const observer = new MutationObserver(() => {
+            if (debounceTimer) return;
+            debounceTimer = setTimeout(() => {
+                debounceTimer = null;
+                processAllDetails();
+            }, 300);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        return observer;
+    }
+
+    registerMenus();
     init();
+    const _detailsObserver = startDetailsObserver();
     document.addEventListener('turbo:load', init);
     document.addEventListener('pjax:end', init);
     if (window.onurlchange === undefined) {
