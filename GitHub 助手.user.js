@@ -665,11 +665,14 @@
             }
 
             let retryTimer = null;
+            let isRefreshing = false;
             const refresh = () => {
-                if (!details.open) return;
+                if (!details.open || isRefreshing) return;
+                isRefreshing = true;
                 LOG('  refresh details 内容, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
                 if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
                 if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
+                isRefreshing = false;
 
                 // 如果展开后还没有下载链接，延迟重试（GitHub 异步加载）
                 const hasLinks = details.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
@@ -689,6 +692,7 @@
 
             // GitHub 的 Assets 内容是动态加载的，需要监听子树变化
             const observer = new MutationObserver(() => {
+                if (isRefreshing) return;
                 LOG('  details MutationObserver 触发, open=' + details.open);
                 if (details.open) refresh();
             });
