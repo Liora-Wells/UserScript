@@ -1463,7 +1463,13 @@
   <button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-save-proxy" data-ghhelper-nt="1">保存</button>
   <button class="ghhelper-btn" id="ghhelper-cancel-proxy" data-ghhelper-nt="1">取消</button>
 </div>`;
-            body.insertBefore(form, document.getElementById('ghhelper-add-proxy').parentNode);
+            // 插入到代理列表之前（ghhelper-proxy-list 是 settings-section 的直接子节点）
+            const listEl = document.getElementById('ghhelper-proxy-list');
+            if (listEl && listEl.parentNode) {
+                listEl.parentNode.insertBefore(form, listEl);
+            } else {
+                body.appendChild(form);
+            }
 
             document.getElementById('ghhelper-save-proxy').addEventListener('click', () => {
                 const name = document.getElementById('ghhelper-new-name').value.trim();
@@ -1509,7 +1515,13 @@
   <button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-save-edit" data-ghhelper-nt="1">保存</button>
   <button class="ghhelper-btn" id="ghhelper-cancel-edit" data-ghhelper-nt="1">取消</button>
 </div>`;
-            body.insertBefore(form, document.getElementById('ghhelper-add-proxy').parentNode);
+            // 插入到代理列表之前（ghhelper-proxy-list 是 settings-section 的直接子节点）
+            const listElEdit = document.getElementById('ghhelper-proxy-list');
+            if (listElEdit && listElEdit.parentNode) {
+                listElEdit.parentNode.insertBefore(form, listElEdit);
+            } else {
+                body.appendChild(form);
+            }
 
             document.getElementById('ghhelper-save-edit').addEventListener('click', () => {
                 const name = document.getElementById('ghhelper-edit-name').value.trim();
