@@ -34,7 +34,8 @@
         features: 'ghhelper_features',
         maxDisplay: 'ghhelper_max_display',
         selectedOS: 'ghhelper_selected_os',
-        selectedArch: 'ghhelper_selected_arch'
+        selectedArch: 'ghhelper_selected_arch',
+        groupsCollapsed: 'ghhelper_proxy_groups_collapsed'
     };
 
     const DEFAULT_FEATURES = {
@@ -1312,6 +1313,34 @@
             if (tab === 'proxies') this.renderProxyTab(body);
             else if (tab === 'features') this.renderFeatureTab(body);
             else if (tab === 'help') this.renderHelpTab(body);
+        },
+
+        _getGroupsCollapsed() {
+            const def = { download: false, raw: true, clone: true, ssh: true };
+            try {
+                const val = StorageManager.get(STORAGE_KEYS.groupsCollapsed, def);
+                // 合并默认值，确保所有 key 都存在
+                return Object.assign({}, def, val || {});
+            } catch (e) {
+                ERR('SettingsPanel._getGroupsCollapsed 异常:', e);
+                return def;
+            }
+        },
+
+        _setGroupsCollapsed(state) {
+            try {
+                StorageManager.set(STORAGE_KEYS.groupsCollapsed, state);
+            } catch (e) {
+                ERR('SettingsPanel._setGroupsCollapsed 异常:', e);
+            }
+        },
+
+        _toggleGroup(type) {
+            const state = this._getGroupsCollapsed();
+            state[type] = !state[type];
+            this._setGroupsCollapsed(state);
+            // 只重渲分组区块，不重建整个 Tab
+            this._renderGroups();
         },
 
         _escapeHtml(s) {
