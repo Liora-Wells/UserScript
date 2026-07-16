@@ -586,21 +586,16 @@
 .ghhelper-os-select:hover,.ghhelper-arch-select:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
 .ghhelper-meta-wrapper>summary{cursor:pointer;padding:8px 16px;font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted,#8b949e));border-top:1px solid var(--borderColor-muted,var(--color-border-muted,#30363d))}
 .ghhelper-meta-wrapper>summary:hover{color:var(--fgColor-default,var(--color-fg-default,#e6edf3))}
-.ghhelper-notes-wrap{border:1px solid var(--color-border-default,#30363d);border-radius:8px;margin:8px 0;overflow:hidden}
-.ghhelper-notes-wrap>summary{display:flex;align-items:center;gap:8px;padding:10px 16px;cursor:pointer;list-style:none;background-color:var(--color-canvas-subtle,#161b22);font-size:14px}
+.ghhelper-notes-wrap{margin:16px 0;border:1px solid var(--color-border-muted,#21262d);border-radius:6px;overflow:hidden}
+.ghhelper-notes-wrap>summary{display:flex;align-items:center;gap:8px;padding:10px 16px;cursor:pointer;list-style:none;background-color:var(--color-canvas-subtle,#161b22);font-size:14px;font-weight:600;color:var(--color-fg-default,#e6edf3);border-bottom:1px solid var(--color-border-muted,#21262d)}
 .ghhelper-notes-wrap>summary::-webkit-details-marker{display:none}
 .ghhelper-notes-wrap>summary:hover{background-color:var(--color-canvas-inset,#010409)}
-.ghhelper-notes-arrow{display:inline-block;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid currentColor;transition:transform 0.12s ease}
+.ghhelper-notes-wrap:not([open])>summary{border-bottom:none}
+.ghhelper-notes-arrow{display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;transition:transform 0.12s ease;opacity:0.7}
 .ghhelper-notes-wrap[open]>.ghhelper-notes-arrow{transform:rotate(180deg)}
-.ghhelper-notes-icon{color:var(--color-fg-muted,#8b949e)}
-.ghhelper-notes-title{font-weight:600;color:var(--color-fg-default,#e6edf3)}
+.ghhelper-notes-title{font-weight:600}
 .ghhelper-notes-version{display:inline-block;padding:1px 8px;font-size:11px;border-radius:10px;background-color:var(--color-success-subtle,rgba(26,127,55,0.15));color:var(--color-success-fg,#1a7f37);border:1px solid var(--color-success-emphasis,#1a7f37)}
-.ghhelper-notes-date{color:var(--color-fg-muted,#8b949e);font-size:12px;margin-left:auto}
-.ghhelper-notes-body{padding:0 16px}
-.ghhelper-version-section{border-top:1px solid var(--color-border-muted,#21262d);margin-top:8px}
-.ghhelper-version-section>summary{display:flex;align-items:center;gap:8px;padding:8px 4px;cursor:pointer;list-style:none;color:var(--color-fg-muted,#8b949e);font-size:13px}
-.ghhelper-version-section>summary::-webkit-details-marker{display:none}
-.ghhelper-version-section>summary:hover{color:var(--color-fg-default,#e6edf3)}
+.ghhelper-notes-wrap>.markdown-body{padding:16px;margin:0!important}
 .ghhelper-raw-btn{border-radius:0!important;margin-left:-1px!important}
 .ghhelper-clone-row{margin-top:4px}
 .ghhelper-clone-row>input{cursor:pointer!important}
@@ -1279,6 +1274,13 @@
             if (!html.value.includes('github.com')) return;
             html.setAttribute('data-ghhelper-clone-processed', '1');
 
+            // 隐藏原 input 右侧的复制按钮（clipboard-copy），避免与点击复制冲突
+            if (html.nextElementSibling) {
+                html.nextElementSibling.style.display = 'none';
+            }
+            // 原 input value 加 git clone 前缀
+            html.value = 'git clone ' + html.value;
+
             const disp = ProxyManager.getDisplayProxies('clone');
             const all = [...disp.pinned, ...disp.overflow];
             // 清理旧元素
@@ -1286,34 +1288,55 @@
             if (!all.length) return;
 
             const host = window.location.host;
-            const splitVal = html.value.split(host);
+            // 用原始 value（去除 git clone 前缀）拆分，得到仓库路径
+            const rawValue = html.value.replace(/^git clone /, '');
+            const splitVal = rawValue.split(host);
             if (splitVal.length < 2) return;
             const href_split = splitVal[1]; // 形如 /owner/repo.git
 
             const wrapperEl = html.parentElement;
             if (!wrapperEl) return;
 
-            // 在原 input 后依次插入每个加速源的 input
+            // 修复下拉菜单 overflow/max-height，避免加速源被截断
+            this._fixMenuOverflow(wrapperEl);
+
+            // 克隆原 input，保留所有样式
             all.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'clone');
+                const inputClone = html.cloneNode(false); // 不克隆子节点（input 无子节点）
+                inputClone.removeAttribute('data-ghhelper-clone-processed');
+                inputClone.setAttribute('data-ghhelper-nt', '1');
+                inputClone.value = 'git clone ' + url;
+                inputClone.title = url + '\n\n点击文字可直接复制';
+                inputClone.style.cursor = 'pointer';
+
+                // 点击自动复制
+                inputClone.addEventListener('click', () => {
+                    try { GM_setClipboard(inputClone.value); } catch (e) {}
+                });
+
+                // 创建包装 div，继承原父元素的 className（保持布局一致）
                 const row = document.createElement('div');
                 row.className = 'ghhelper-clone-row ' + wrapperEl.className;
                 row.setAttribute('data-ghhelper-element', '1');
                 row.setAttribute('data-ghhelper-nt', '1');
+                row.style.marginTop = '4px';
+                row.appendChild(inputClone);
 
-                const input = document.createElement('input');
-                input.className = html.className;
-                input.setAttribute('data-ghhelper-nt', '1');
-                input.value = 'git clone ' + url;
-                input.readOnly = true;
-                input.title = url + '\n\n点击自动复制';
-                input.style.cursor = 'pointer';
-                input.addEventListener('click', () => {
-                    try { GM_setClipboard(input.value); } catch (e) {}
-                });
-                row.appendChild(input);
                 wrapperEl.insertAdjacentElement('afterend', row);
             });
+
+            // 给祖先容器添加点击委托（点击 input 自动复制）
+            const grandparent = wrapperEl.parentElement;
+            if (grandparent && !grandparent.dataset.ghhelperCloneClickBound) {
+                grandparent.dataset.ghhelperCloneClickBound = '1';
+                grandparent.addEventListener('click', (e) => {
+                    if (e.target.tagName === 'INPUT' && e.target.value.startsWith('git clone ')) {
+                        try { GM_setClipboard(e.target.value); } catch (err) {}
+                    }
+                });
+            }
+
             LOG('  processCloneButtons: 已添加 ' + all.length + ' 个 Clone 加速源');
         },
 
@@ -1325,39 +1348,81 @@
             if (!html.value.includes('github.com')) return;
             html.setAttribute('data-ghhelper-ssh-processed', '1');
 
+            // 隐藏原 input 右侧的复制按钮
+            if (html.nextElementSibling) {
+                html.nextElementSibling.style.display = 'none';
+            }
+            // 原 input value 加 git clone 前缀
+            html.value = 'git clone ' + html.value;
+
             const disp = ProxyManager.getDisplayProxies('ssh');
             const all = [...disp.pinned, ...disp.overflow];
             target.querySelectorAll('.ghhelper-ssh-row').forEach(e => e.remove());
             if (!all.length) return;
 
-            const splitVal = html.value.split(':');
+            // 用原始 value（去除 git clone 前缀）拆分
+            const rawValue = html.value.replace(/^git clone /, '');
+            const splitVal = rawValue.split(':');
             if (splitVal.length < 2) return;
             const href_split = splitVal[1]; // 形如 owner/repo.git
 
             const wrapperEl = html.parentElement;
             if (!wrapperEl) return;
 
+            this._fixMenuOverflow(wrapperEl);
+
             all.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'ssh');
+                const inputClone = html.cloneNode(false);
+                inputClone.removeAttribute('data-ghhelper-ssh-processed');
+                inputClone.setAttribute('data-ghhelper-nt', '1');
+                inputClone.value = 'git clone ' + url;
+                inputClone.title = url + '\n\n点击文字可直接复制';
+                inputClone.style.cursor = 'pointer';
+
+                inputClone.addEventListener('click', () => {
+                    try { GM_setClipboard(inputClone.value); } catch (e) {}
+                });
+
                 const row = document.createElement('div');
                 row.className = 'ghhelper-ssh-row ' + wrapperEl.className;
                 row.setAttribute('data-ghhelper-element', '1');
                 row.setAttribute('data-ghhelper-nt', '1');
+                row.style.marginTop = '4px';
+                row.appendChild(inputClone);
 
-                const input = document.createElement('input');
-                input.className = html.className;
-                input.setAttribute('data-ghhelper-nt', '1');
-                input.value = 'git clone ' + url;
-                input.readOnly = true;
-                input.title = url + '\n\n点击自动复制';
-                input.style.cursor = 'pointer';
-                input.addEventListener('click', () => {
-                    try { GM_setClipboard(input.value); } catch (e) {}
-                });
-                row.appendChild(input);
                 wrapperEl.insertAdjacentElement('afterend', row);
             });
+
+            const grandparent = wrapperEl.parentElement;
+            if (grandparent && !grandparent.dataset.ghhelperSshClickBound) {
+                grandparent.dataset.ghhelperSshClickBound = '1';
+                grandparent.addEventListener('click', (e) => {
+                    if (e.target.tagName === 'INPUT' && e.target.value.startsWith('git clone ')) {
+                        try { GM_setClipboard(e.target.value); } catch (err) {}
+                    }
+                });
+            }
+
             LOG('  processSSHButtons: 已添加 ' + all.length + ' 个 SSH 加速源');
+        },
+
+        // 修复下拉菜单 overflow/max-height，避免加速源被截断
+        _fixMenuOverflow(elem) {
+            let node = elem;
+            let depth = 0;
+            while (node && node !== document.body && depth < 8) {
+                const style = window.getComputedStyle(node);
+                if (style.overflow === 'hidden' || style.overflow === 'auto' || style.overflowY === 'auto' || style.overflowY === 'hidden') {
+                    node.style.overflow = 'visible';
+                    node.style.overflowY = 'visible';
+                }
+                if (style.maxHeight && style.maxHeight !== 'none') {
+                    node.style.maxHeight = 'none';
+                }
+                node = node.parentElement;
+                depth++;
+            }
         },
 
         // 重渲 Raw/Clone/SSH（加速源变更后）
@@ -1431,25 +1496,6 @@
                 const m = window.location.pathname.match(/\/releases\/tag\/([^/?]+)/);
                 const version = m ? decodeURIComponent(m[1]) : '';
 
-                // 提取日期（限定到 release 容器内，避免匹配页面其他 time 元素）
-                let dateStr = '';
-                const releaseCard = el.closest('[data-test-selector="release-card"]') || el.closest('.release') || el.closest('.Box');
-                const timeEl = releaseCard ? releaseCard.querySelector('relative-time, time[datetime]') : null;
-                if (timeEl) {
-                    const dt = timeEl.getAttribute('datetime');
-                    if (dt) {
-                        const d = new Date(dt);
-                        if (!isNaN(d.getTime())) {
-                            const pad = n => String(n).padStart(2, '0');
-                            dateStr = pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-                        }
-                    }
-                }
-
-                // 多版本分段：检测 h1 数量
-                const h1s = Array.from(el.querySelectorAll('h1'));
-                const hasMultiVersions = h1s.length >= 2;
-
                 // 创建外层 details
                 const wrap = document.createElement('details');
                 wrap.setAttribute('data-ghhelper-notes-wrap', '1');
@@ -1458,54 +1504,22 @@
                 wrap.className = 'ghhelper-notes-wrap';
                 wrap.setAttribute('open', 'open');
 
-                // summary
+                // summary：简洁的标题栏，不抢夺内容的视觉焦点
                 const summary = document.createElement('summary');
                 summary.setAttribute('data-ghhelper-nt', '1');
                 summary.innerHTML = '<span class="ghhelper-notes-arrow"></span>' +
-                    '<span class="ghhelper-notes-icon">📖</span>' +
                     '<span class="ghhelper-notes-title">更新日志</span>' +
-                    (version ? '<span class="ghhelper-notes-version">' + escapeHtml(version) + '</span>' : '') +
-                    (dateStr ? '<span class="ghhelper-notes-date">' + dateStr + '</span>' : '');
+                    (version ? '<span class="ghhelper-notes-version">' + escapeHtml(version) + '</span>' : '');
                 wrap.appendChild(summary);
 
-                // body 容器
-                const body = document.createElement('div');
-                body.className = 'ghhelper-notes-body';
-                body.setAttribute('data-ghhelper-nt', '1');
-
-                if (hasMultiVersions) {
-                    // 分段：用 details 包裹每个 h1 到下一个 h1 之间内容
-                    const children = Array.from(el.childNodes);
-                    let currentSection = null;
-                    children.forEach(node => {
-                        if (node.nodeType === 1 && node.tagName === 'H1') {
-                            // 开启新版本段
-                            currentSection = document.createElement('details');
-                            currentSection.setAttribute('data-ghhelper-element', '1');
-                            currentSection.setAttribute('data-ghhelper-nt', '1');
-                            currentSection.className = 'ghhelper-version-section';
-                            currentSection.setAttribute('open', 'open');
-                            const s = document.createElement('summary');
-                            s.setAttribute('data-ghhelper-nt', '1');
-                            s.innerHTML = '<span>📌 ' + escapeHtml((node.textContent || '').trim()) + '</span>' +
-                                '<span class="ghhelper-version-line"></span>' +
-                                '<span class="ghhelper-version-toggle">收起 ▲</span>';
-                            currentSection.appendChild(s);
-                            body.appendChild(currentSection);
-                        } else if (currentSection) {
-                            currentSection.appendChild(node);
-                        } else {
-                            body.appendChild(node);
-                        }
-                    });
-                } else {
-                    // 不分段，原样移入
-                    while (el.firstChild) body.appendChild(el.firstChild);
-                }
-
-                wrap.appendChild(body);
-                // 用 wrap 完全替换原 el，避免原 el 残留的 margin/hidden 空间与 wrap 边框重叠
+                // 关键：不移动原 el 的子元素，而是把整个原 el 移入 details
+                // 这样原 el 的 className、dataset、内部 DOM 结构完全保留
+                // GitHub 的 JS（如代码高亮、锚点、复制按钮等）仍能正常工作
                 el.parentNode.replaceChild(wrap, el);
+                wrap.appendChild(el);
+                // 移除原 el 的 margin（由 wrap 接管外边距），保留其他样式
+                el.style.margin = '0';
+                el.classList.remove('tmp-my-3');
             });
         },
 
@@ -2217,7 +2231,7 @@
                 { key: 'groupAndSort', icon: '📁', label: '文件分组排序', desc: '按 OS/平台分组，当前系统优先排序', impact: 'Release 文件列表顺序与色块标记' },
                 { key: 'downloadCount', icon: '📥', label: '显示下载量', desc: '从 GitHub API 获取每个文件的下载次数', impact: '文件行右侧显示下载量图标+数字' },
                 { key: 'replaceTime', icon: '🕐', label: '精确时间替换', desc: '将"3天前"替换为"2026-07-13 14:30"', impact: '关闭以兼容中文化脚本，开启后两者可能冲突' },
-                { key: 'collapsibleNotes', icon: '📖', label: '可折叠更新日志', desc: '将更新日志包进可折叠区域，多版本时支持分段折叠', impact: 'Release 标题下方显示"更新日志"折叠栏' },
+                { key: 'collapsibleNotes', icon: '📖', label: '可折叠更新日志', desc: '将更新日志包进可折叠区域', impact: 'Release 标题下方显示"更新日志"折叠栏' },
                 { key: 'proxyButtons', icon: '⚡', label: '加速下载按钮', desc: 'Release 文件、Raw、Clone、SSH 旁显示加速下载按钮', impact: '文件行右侧显示加速源按钮+下拉菜单；Raw 按钮旁加速；Code 菜单 Clone/SSH 下方加速' },
                 { key: 'scrollToTop', icon: '↑', label: '回到顶部按钮', desc: '滚动超过 300px 后显示悬浮回到顶部按钮', impact: '页面右下角悬浮箭头按钮' }
             ];
