@@ -827,6 +827,14 @@
             }
             detailsElem.dataset.ghhelperVRCount = validRows.length;
 
+            // 幂等清理：移除所有旧 wrapper，把内部 li 还原回真实 parent，防止重复折叠
+            // 必须在收集 validRows 之后、计算 parent 之前执行，确保 parent 指向真实容器
+            const parentForCleanup = detailsElem.querySelector('ul, .Box-body, div') || detailsElem;
+            parentForCleanup.querySelectorAll('[data-ghhelper-wrapper="1"]').forEach(w => {
+                w.querySelectorAll('li').forEach(li => parentForCleanup.appendChild(li));
+                w.remove();
+            });
+
             const parent = validRows[0].parentNode;
             const os = SortEngine.getActiveOS();
             const arch = SortEngine.getActiveArch();
@@ -885,42 +893,38 @@
             };
 
             let gid = null, seg = [];
+            // 收集所有签名/校验/增量文件，统一放入一个折叠区
+            const allAux = [];
             const flush = () => {
                 if (!seg.length) return;
-                const main = [], aux = [];
                 seg.forEach(r => {
                     const n = r._ghn ? this.getFileNameFromLink(r._ghn) : '';
-                    (SortEngine.isSignatureFile(n) ? aux : main).push(r);
+                    if (SortEngine.isSignatureFile(n)) {
+                        allAux.push(r);
+                    } else {
+                        parent.appendChild(r);
+                        style(r);
+                    }
                 });
-                main.forEach(r => { parent.appendChild(r); style(r); });
-                if (aux.length) {
-                    const w = document.createElement('details');
-                    w.setAttribute('data-ghhelper-wrapper', '1');
-                    w.setAttribute('data-ghhelper-element', '1');
-                    w.setAttribute('data-ghhelper-nt', '1');
-                    w.className = 'ghhelper-aux-wrapper ' + SortEngine.getGroupClass(seg[0]._ghg.id);
-                    const s = document.createElement('summary');
-                    s.textContent = `校验/增量文件 (${aux.length})`;
-                    w.appendChild(s);
-                    aux.forEach(r => { w.appendChild(r); style(r); });
-                    parent.appendChild(w);
-                }
                 seg = [];
             };
 
             normal.forEach(r => { if (r._ghg.id !== gid) flush(); gid = r._ghg.id; seg.push(r); });
             flush();
 
-            if (meta.length) {
+            // meta 组（attestations 等）也归入签名折叠区，统一为一个 wrapper
+            meta.forEach(r => allAux.push(r));
+
+            if (allAux.length) {
                 const w = document.createElement('details');
                 w.setAttribute('data-ghhelper-wrapper', '1');
                 w.setAttribute('data-ghhelper-element', '1');
                 w.setAttribute('data-ghhelper-nt', '1');
                 w.className = 'ghhelper-meta-wrapper';
                 const s = document.createElement('summary');
-                s.textContent = `签名 / 校验文件 (${meta.length})`;
+                s.textContent = '签名 / 校验 (' + allAux.length + ')';
                 w.appendChild(s);
-                meta.forEach(r => { w.appendChild(r); style(r); });
+                allAux.forEach(r => { w.appendChild(r); style(r); });
                 parent.appendChild(w);
             }
 
