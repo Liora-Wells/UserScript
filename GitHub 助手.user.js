@@ -1489,23 +1489,28 @@
             const disabledCount = all.length - enabledCount;
 
             let html = '<div class="ghhelper-settings-section" data-ghhelper-nt="1">';
-            html += '<div data-ghhelper-nt="1" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
-            html += '<h4 data-ghhelper-nt="1" style="margin:0">加速源管理</h4>';
-            html += '<div data-ghhelper-nt="1" style="display:flex;gap:8px">';
+            html += '<h4 data-ghhelper-nt="1" style="margin:0 0 10px">加速源管理</h4>';
+
+            // 第一行：搜索框 + 操作按钮
+            html += '<div class="ghhelper-search-row" data-ghhelper-nt="1">';
+            html += '<input class="ghhelper-input ghhelper-search-input" id="ghhelper-search" placeholder="🔍 搜索名称/URL/地区/备注" data-ghhelper-nt="1">';
+            html += '<button class="ghhelper-search-clear" id="ghhelper-search-clear" data-ghhelper-nt="1" style="display:none">×</button>';
             html += '<button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-add-proxy" data-ghhelper-nt="1">+ 添加</button>';
             html += '<button class="ghhelper-btn" id="ghhelper-restore-defaults" data-ghhelper-nt="1">↻ 恢复默认</button>';
-            html += '</div></div>';
-
-            // 筛选器
-            html += '<div data-ghhelper-nt="1" style="display:flex;gap:8px;margin-bottom:12px;font-size:12px;align-items:center">';
-            html += '<span data-ghhelper-nt="1">类型:</span><select class="ghhelper-select" id="ghhelper-filter-type" data-ghhelper-nt="1">';
-            html += '<option value="all">全部</option><option value="download">下载</option><option value="raw">Raw</option><option value="clone">Clone</option><option value="ssh">SSH</option></select>';
-            html += '<span data-ghhelper-nt="1">状态:</span><select class="ghhelper-select" id="ghhelper-filter-status" data-ghhelper-nt="1">';
-            html += '<option value="all">全部</option><option value="enabled">启用</option><option value="disabled">禁用</option></select>';
-            html += '<span id="ghhelper-proxy-count" data-ghhelper-nt="1" style="margin-left:auto;color:var(--fgColor-muted,var(--color-fg-muted))">启用 ' + enabledCount + ' / 禁用 ' + disabledCount + '</span>';
             html += '</div>';
 
-            // 列表
+            // 第二行：Chip 行（容器，由 _renderChipRow 填充）
+            html += '<div id="ghhelper-chip-row" data-ghhelper-nt="1"></div>';
+
+            // 第三行：状态摘要 + 批量操作
+            html += '<div class="ghhelper-status-row" data-ghhelper-nt="1">';
+            html += '<span id="ghhelper-proxy-count" data-ghhelper-nt="1">共 ' + all.length + ' 条 · 启用 ' + enabledCount + ' · 禁用 ' + disabledCount + '</span>';
+            html += '<div class="ghhelper-status-actions" data-ghhelper-nt="1">';
+            html += '<button class="ghhelper-status-action" id="ghhelper-expand-all" data-ghhelper-nt="1">全部展开</button>';
+            html += '<button class="ghhelper-status-action" id="ghhelper-collapse-all" data-ghhelper-nt="1">全部折叠</button>';
+            html += '</div></div>';
+
+            // 列表（容器，由 _renderGroups 填充）
             html += '<div id="ghhelper-proxy-list" data-ghhelper-nt="1"></div>';
 
             // 最大显示数量
@@ -1521,9 +1526,27 @@
 
             body.innerHTML = html;
 
-            this._renderProxyList();
+            // 渲染 Chip 行与分组列表
+            this._renderChipRow();
+            this._renderGroups();
 
-            document.getElementById('ghhelper-add-proxy').addEventListener('click', () => this.showAddProxyForm(body));
+            // 事件绑定
+            const searchInput = document.getElementById('ghhelper-search');
+            const searchClear = document.getElementById('ghhelper-search-clear');
+            searchInput.addEventListener('input', (e) => {
+                const val = e.target.value;
+                searchClear.style.display = val ? 'block' : 'none';
+                this._setFilter('keyword', val);
+            });
+            searchClear.addEventListener('click', () => {
+                searchInput.value = '';
+                searchClear.style.display = 'none';
+                this._setFilter('keyword', '');
+            });
+
+            document.getElementById('ghhelper-add-proxy').addEventListener('click', () => {
+                this._showAddForm();
+            });
             document.getElementById('ghhelper-restore-defaults').addEventListener('click', () => {
                 if (confirm('将重新添加所有缺失的内置源，已编辑的内置源会被重置，确认？')) {
                     ProxyManager.restoreDefaults();
@@ -1531,8 +1554,14 @@
                     DOMRenderer.reprocessAll();
                 }
             });
-            document.getElementById('ghhelper-filter-type').addEventListener('change', () => this._renderProxyList());
-            document.getElementById('ghhelper-filter-status').addEventListener('change', () => this._renderProxyList());
+            document.getElementById('ghhelper-expand-all').addEventListener('click', () => {
+                this._setGroupsCollapsed({ download: false, raw: false, clone: false, ssh: false });
+                this._renderGroups();
+            });
+            document.getElementById('ghhelper-collapse-all').addEventListener('click', () => {
+                this._setGroupsCollapsed({ download: true, raw: true, clone: true, ssh: true });
+                this._renderGroups();
+            });
             document.getElementById('ghhelper-max-display').addEventListener('change', function () {
                 StorageManager.setMaxDisplay(parseInt(this.value));
                 DOMRenderer.reprocessAll();
