@@ -19,7 +19,7 @@
 (function () {
     'use strict';
 
-    const DEBUG = true;
+    const DEBUG = false;
     const LOG = (...args) => { if (DEBUG) console.log('[GH助手]', ...args); };
     const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
     const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
@@ -566,7 +566,7 @@
 .ghhelper-proxy-btn{display:inline-flex;align-items:center;padding:2px 8px;font-size:11px;font-weight:500;border:1px solid var(--borderColor-default,var(--color-border-default,#30363d));border-radius:6px;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;text-decoration:none!important;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis}
 .ghhelper-proxy-btn:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d));text-decoration:none!important;color:var(--button-default-fgColor-hover,var(--color-btn-hover-text,#c9d1d9))!important}
 .ghhelper-proxy-dropdown-menu{display:none;position:absolute;right:0;top:100%;z-index:999;min-width:80px;padding:4px 0;margin-top:4px;background-color:var(--overlay-bgColor,var(--color-canvas-overlay));border:1px solid var(--borderColor-default,var(--color-border-default));border-radius:6px;box-shadow:var(--shadow-floating-large,0 8px 24px rgba(140,149,159,0.2))}
-.ghhelper-proxy-dropdown:hover .ghhelper-proxy-dropdown-menu{display:block}
+.ghhelper-proxy-dropdown.ghhelper-dropdown-open .ghhelper-proxy-dropdown-menu{display:block}
 .ghhelper-proxy-menu-item{display:block!important;padding:4px 16px!important;margin:0!important;border:none!important;border-radius:0!important;background:transparent!important;color:var(--fgColor-default,var(--color-fg-default))!important;text-decoration:none!important;font-size:12px!important;text-align:center!important;line-height:1.5!important;white-space:nowrap}
 .ghhelper-proxy-menu-item:hover{background-color:var(--controlAction-bgColor-hover,var(--color-action-list-item-default-hover-bg))!important;text-decoration:none!important}
 .ghhelper-os-select,.ghhelper-arch-select{appearance:auto;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));border-radius:6px;color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;font-size:12px;font-weight:500;line-height:20px;padding:3px 8px;margin-left:8px}
@@ -1075,9 +1075,12 @@
                 if (overflow.length) {
                     const dd = document.createElement('span');
                     dd.className = 'ghhelper-proxy-dropdown';
+                    dd.setAttribute('data-ghhelper-element', '1');
+                    dd.setAttribute('data-ghhelper-nt', '1');
                     const db = document.createElement('a');
                     db.className = 'ghhelper-proxy-btn'; db.textContent = '加速 ▼';
                     db.href = 'javascript:void(0)';
+                    db.setAttribute('data-ghhelper-nt', '1');
                     const dm = document.createElement('div');
                     dm.className = 'ghhelper-proxy-dropdown-menu';
                     overflow.forEach(p => {
@@ -1088,6 +1091,16 @@
                         lk.textContent = p.name;
                         lk.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '');
                         dm.appendChild(lk);
+                    });
+                    // click 切换下拉菜单（避免 hover 在鼠标轨迹离开时关闭）
+                    db.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // 先关闭其他已打开的菜单
+                        document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                            if (el !== dd) el.classList.remove('ghhelper-dropdown-open');
+                        });
+                        dd.classList.toggle('ghhelper-dropdown-open');
                     });
                     dd.appendChild(db); dd.appendChild(dm); container.appendChild(dd);
                 }
@@ -2111,6 +2124,18 @@
         StorageManager.initProxies();
         DOMRenderer.injectCSS();
         DOMRenderer.injectGearButton();
+
+        // 全局点击监听：点击下拉菜单外部时关闭（只绑一次）
+        if (!window.__ghhelperDropdownBound) {
+            window.__ghhelperDropdownBound = true;
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.ghhelper-proxy-dropdown')) {
+                    document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                        el.classList.remove('ghhelper-dropdown-open');
+                    });
+                }
+            });
+        }
 
         if (StorageManager.isFeatureEnabled('scrollToTop')) {
             DOMRenderer.injectScrollToTop();
