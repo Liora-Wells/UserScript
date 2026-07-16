@@ -1303,87 +1303,154 @@
         },
 
         renderProxyTab(body) {
-            const custom = ProxyManager.getCustom();
-            const builtin = BUILTIN_PROXIES;
-            const maxDisplay = StorageManager.getMaxDisplay();
+            const all = StorageManager.getProxies();
+            const enabledCount = all.filter(p => p.enabled).length;
+            const disabledCount = all.length - enabledCount;
 
-            let html = '<div class="ghhelper-settings-section"><h4>自定义加速源 (' + custom.length + ')</h4>';
-            custom.forEach(p => {
-                html += this._proxyItemHTML(p, false);
-            });
-            html += '<button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-add-proxy" style="margin-top:8px">+ 添加加速源</button></div>';
-
-            html += '<div class="ghhelper-settings-section"><h4>内置加速源 (' + builtin.length + ')</h4>';
-            html += '<div style="max-height:200px;overflow-y:auto">';
-            builtin.forEach(p => {
-                html += '<div class="ghhelper-settings-row"><div><span class="ghhelper-settings-label">' + p.name + '</span> <span class="ghhelper-settings-desc">' + p.desc + ' [' + (p.region || '') + ']</span></div>';
-                html += '<label class="ghhelper-toggle"><input type="checkbox" ' + (p.enabled ? 'checked' : '') + ' data-builtin-id="' + p.id + '"><span class="ghhelper-toggle-slider"></span></label></div>';
-            });
+            let html = '<div class="ghhelper-settings-section" data-ghhelper-nt="1">';
+            html += '<div data-ghhelper-nt="1" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+            html += '<h4 data-ghhelper-nt="1" style="margin:0">加速源管理</h4>';
+            html += '<div data-ghhelper-nt="1" style="display:flex;gap:8px">';
+            html += '<button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-add-proxy" data-ghhelper-nt="1">+ 添加</button>';
+            html += '<button class="ghhelper-btn" id="ghhelper-restore-defaults" data-ghhelper-nt="1">↻ 恢复默认</button>';
             html += '</div></div>';
 
-            html += '<div class="ghhelper-settings-section"><h4>显示设置</h4>';
-            html += '<div class="ghhelper-settings-row"><span class="ghhelper-settings-label">最大显示数量</span><select class="ghhelper-select" id="ghhelper-max-display">';
+            // 筛选器
+            html += '<div data-ghhelper-nt="1" style="display:flex;gap:8px;margin-bottom:12px;font-size:12px;align-items:center">';
+            html += '<span data-ghhelper-nt="1">类型:</span><select class="ghhelper-select" id="ghhelper-filter-type" data-ghhelper-nt="1">';
+            html += '<option value="all">全部</option><option value="download">下载</option><option value="raw">Raw</option><option value="clone">Clone</option><option value="ssh">SSH</option></select>';
+            html += '<span data-ghhelper-nt="1">状态:</span><select class="ghhelper-select" id="ghhelper-filter-status" data-ghhelper-nt="1">';
+            html += '<option value="all">全部</option><option value="enabled">启用</option><option value="disabled">禁用</option></select>';
+            html += '<span data-ghhelper-nt="1" style="margin-left:auto;color:var(--fgColor-muted,var(--color-fg-muted))">启用 ' + enabledCount + ' / 禁用 ' + disabledCount + '</span>';
+            html += '</div>';
+
+            // 列表
+            html += '<div id="ghhelper-proxy-list" data-ghhelper-nt="1"></div>';
+
+            // 最大显示数量
+            html += '<div data-ghhelper-nt="1" style="margin-top:16px;display:flex;align-items:center;gap:8px">';
+            html += '<span data-ghhelper-nt="1" style="font-size:13px">最大显示数量:</span>';
+            html += '<select class="ghhelper-select" id="ghhelper-max-display" data-ghhelper-nt="1">';
             [4, 5, 6, 7, 8, 9, 10].forEach(n => {
-                html += '<option value="' + n + '" ' + (maxDisplay === n ? 'selected' : '') + '>' + n + '</option>';
+                html += '<option value="' + n + '" ' + (StorageManager.getMaxDisplay() === n ? 'selected' : '') + '>' + n + '</option>';
             });
-            html += '</select></div></div>';
+            html += '</select>';
+            html += '<span data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">超出部分收入"加速 ▼"下拉菜单</span>';
+            html += '</div></div>';
 
             body.innerHTML = html;
 
-            // 绑定事件
+            this._renderProxyList();
+
             document.getElementById('ghhelper-add-proxy').addEventListener('click', () => this.showAddProxyForm(body));
+            document.getElementById('ghhelper-restore-defaults').addEventListener('click', () => {
+                if (confirm('将重新添加所有缺失的内置源，已编辑的内置源会被重置，确认？')) {
+                    ProxyManager.restoreDefaults();
+                    this.renderTab('proxies');
+                    DOMRenderer.reprocessAll();
+                }
+            });
+            document.getElementById('ghhelper-filter-type').addEventListener('change', () => this._renderProxyList());
+            document.getElementById('ghhelper-filter-status').addEventListener('change', () => this._renderProxyList());
             document.getElementById('ghhelper-max-display').addEventListener('change', function () {
                 StorageManager.setMaxDisplay(parseInt(this.value));
-            });
-            body.querySelectorAll('input[data-builtin-id]').forEach(cb => {
-                cb.addEventListener('change', function () {
-                    ProxyManager.toggleProxy(this.dataset.builtinId);
-                });
-            });
-            body.querySelectorAll('.ghhelper-btn-danger').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const id = this.dataset.proxyId;
-                    LOG('SettingsPanel 删除按钮点击, proxyId:', id);
-                    ProxyManager.deleteProxy(id);
-                    SettingsPanel.renderTab('proxies');
-                });
+                DOMRenderer.reprocessAll();
             });
         },
 
-        _proxyItemHTML(p, builtin) {
-            let h = '<div class="ghhelper-proxy-item"><div class="ghhelper-proxy-header">';
-            h += '<span class="ghhelper-proxy-name">' + p.name + ' <span class="ghhelper-badge ' + (builtin ? 'ghhelper-badge-builtin' : 'ghhelper-badge-custom') + '">' + (builtin ? '内置' : '自定义') + '</span></span>';
-            if (!builtin) {
-                h += '<div><button class="ghhelper-btn ghhelper-btn-danger" data-proxy-id="' + p.id + '" style="margin-left:8px">删除</button></div>';
+        _renderProxyList() {
+            const listEl = document.getElementById('ghhelper-proxy-list');
+            if (!listEl) return;
+            const all = StorageManager.getProxies();
+            const filterType = document.getElementById('ghhelper-filter-type').value;
+            const filterStatus = document.getElementById('ghhelper-filter-status').value;
+            const filtered = all.filter(p => {
+                if (filterType !== 'all' && p.type !== filterType && p.type !== 'all') return false;
+                if (filterStatus === 'enabled' && !p.enabled) return false;
+                if (filterStatus === 'disabled' && p.enabled) return false;
+                return true;
+            });
+
+            let html = '';
+            filtered.forEach(p => {
+                const dotColor = p.enabled ? '#1a7f37' : '#6e7681';
+                const typeBadge = p.type === 'all' ? '全部' : p.type;
+                const sourceBadge = p.builtIn ? '内置' : '自定义';
+                html += '<div class="ghhelper-proxy-card" data-ghhelper-nt="1" style="border:1px solid var(--color-border-default,#30363d);border-radius:8px;padding:10px 12px;margin-bottom:6px">';
+                html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+                html += '<span data-ghhelper-nt="1" style="width:8px;height:8px;border-radius:50%;background-color:' + dotColor + ';flex-shrink:0"></span>';
+                html += '<span data-ghhelper-nt="1" style="font-weight:600;font-size:13px;flex:1;min-width:0">' + p.name + '</span>';
+                html += '<span data-ghhelper-nt="1" class="Label" style="font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid">[' + typeBadge + ']</span>';
+                if (p.region) html += '<span data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">' + p.region + '</span>';
+                html += '</div>';
+                html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted));word-break:break-all;margin-bottom:6px">' + p.url + '</div>';
+                if (p.desc) html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted));margin-bottom:6px">' + p.desc + '</div>';
+                html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px">';
+                html += '<span data-ghhelper-nt="1" class="Label ' + (p.builtIn ? '' : 'Label--success') + '" style="font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid">' + sourceBadge + '</span>';
+                html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (p.enabled ? 'checked' : '') + ' data-proxy-toggle="' + p.id + '"><span class="ghhelper-toggle-slider"></span></label>';
+                html += '<button class="ghhelper-btn" data-proxy-edit="' + p.id + '" data-ghhelper-nt="1" style="margin-left:auto">编辑</button>';
+                html += '<button class="ghhelper-btn ghhelper-btn-danger" data-proxy-delete="' + p.id + '" data-ghhelper-nt="1">删除</button>';
+                html += '</div></div>';
+            });
+            if (!filtered.length) {
+                html = '<div data-ghhelper-nt="1" style="text-align:center;padding:20px;color:var(--fgColor-muted,var(--color-fg-muted));font-size:12px">无匹配加速源</div>';
             }
-            h += '</div><div class="ghhelper-proxy-url">' + p.url + '</div>';
-            h += '<div class="ghhelper-proxy-meta"><span>类型: ' + p.type + '</span><span>' + (p.desc || '') + '</span><span>' + (p.region || '') + '</span></div></div>';
-            return h;
+            listEl.innerHTML = html;
+
+            // 绑定事件
+            listEl.querySelectorAll('input[data-proxy-toggle]').forEach(cb => {
+                cb.addEventListener('change', function () {
+                    ProxyManager.toggleProxy(this.dataset.proxyToggle);
+                    DOMRenderer.reprocessAll();
+                    // 刷新筛选计数
+                    SettingsPanel.renderTab('proxies');
+                });
+            });
+            listEl.querySelectorAll('[data-proxy-edit]').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    SettingsPanel.showEditProxyForm(document.getElementById('ghhelper-body'), this.dataset.proxyEdit);
+                });
+            });
+            listEl.querySelectorAll('[data-proxy-delete]').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const id = this.dataset.proxyDelete;
+                    const proxy = StorageManager.getProxies().find(p => p.id === id);
+                    const msg = proxy && proxy.builtIn
+                        ? '删除内置源后可通过"恢复默认"找回，确认？'
+                        : '确认删除此自定义加速源？';
+                    if (confirm(msg)) {
+                        ProxyManager.deleteProxy(id);
+                        SettingsPanel.renderTab('proxies');
+                        DOMRenderer.reprocessAll();
+                    }
+                });
+            });
         },
 
         showAddProxyForm(body) {
             const form = document.createElement('div');
-            form.style.cssText = 'border:1px solid var(--color-border-default,#30363d);border-radius:8px;padding:12px;margin-top:8px';
+            form.setAttribute('data-ghhelper-nt', '1');
+            form.setAttribute('data-ghhelper-element', '1');
+            form.style.cssText = 'border:1px solid var(--color-border-default,#30363d);border-radius:8px;padding:12px;margin-bottom:12px';
             form.innerHTML = `
-<p style="margin:0 0 8px;font-weight:600">添加自定义加速源</p>
-<div style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-new-name" placeholder="名称" style="margin-bottom:6px"></div>
-<div style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-new-url" placeholder="URL（如 https://example.com/https://github.com）"></div>
-<div style="margin-bottom:6px"><select class="ghhelper-select" id="ghhelper-new-type">
+<p data-ghhelper-nt="1" style="margin:0 0 8px;font-weight:600">添加加速源</p>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-new-name" placeholder="名称" data-ghhelper-nt="1" style="margin-bottom:6px"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-new-url" placeholder="URL（如 https://example.com/https://github.com）" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><select class="ghhelper-select" id="ghhelper-new-type" data-ghhelper-nt="1">
   <option value="download">下载/ZIP</option><option value="raw">Raw</option><option value="clone">Clone</option><option value="ssh">SSH</option><option value="all">全部</option>
 </select></div>
-<div style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-new-desc" placeholder="备注（可选）"></div>
-<div style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-new-region" placeholder="地区（可选）"></div>
-<div style="display:flex;gap:8px">
-  <button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-save-proxy">保存</button>
-  <button class="ghhelper-btn" id="ghhelper-cancel-proxy">取消</button>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-new-desc" placeholder="备注（可选）" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-new-region" placeholder="地区（可选）" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="display:flex;gap:8px">
+  <button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-save-proxy" data-ghhelper-nt="1">保存</button>
+  <button class="ghhelper-btn" id="ghhelper-cancel-proxy" data-ghhelper-nt="1">取消</button>
 </div>`;
-            body.insertBefore(form, document.getElementById('ghhelper-add-proxy'));
+            body.insertBefore(form, document.getElementById('ghhelper-add-proxy').parentNode);
 
             document.getElementById('ghhelper-save-proxy').addEventListener('click', () => {
                 const name = document.getElementById('ghhelper-new-name').value.trim();
                 const url = document.getElementById('ghhelper-new-url').value.trim();
-                LOG('SettingsPanel 保存代理: name=' + name + ', url=' + url);
-                if (!name || !url) { WARN('保存代理: name或url为空'); return; }
+                if (!name || !url) { alert('名称和 URL 必填'); return; }
                 ProxyManager.addCustom({
                     name, url,
                     type: document.getElementById('ghhelper-new-type').value,
@@ -1391,8 +1458,53 @@
                     region: document.getElementById('ghhelper-new-region').value.trim()
                 });
                 SettingsPanel.renderTab('proxies');
+                DOMRenderer.reprocessAll();
             });
             document.getElementById('ghhelper-cancel-proxy').addEventListener('click', () => {
+                form.remove();
+            });
+        },
+
+        showEditProxyForm(body, id) {
+            const proxy = StorageManager.getProxies().find(p => p.id === id);
+            if (!proxy) return;
+            const form = document.createElement('div');
+            form.setAttribute('data-ghhelper-nt', '1');
+            form.setAttribute('data-ghhelper-element', '1');
+            form.style.cssText = 'border:1px solid var(--color-border-default,#30363d);border-radius:8px;padding:12px;margin-bottom:12px';
+            form.innerHTML = `
+<p data-ghhelper-nt="1" style="margin:0 0 8px;font-weight:600">编辑加速源</p>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-name" value="${proxy.name}" data-ghhelper-nt="1" style="margin-bottom:6px"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-url" value="${proxy.url}" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><select class="ghhelper-select" id="ghhelper-edit-type" data-ghhelper-nt="1">
+  <option value="download" ${proxy.type === 'download' ? 'selected' : ''}>下载/ZIP</option>
+  <option value="raw" ${proxy.type === 'raw' ? 'selected' : ''}>Raw</option>
+  <option value="clone" ${proxy.type === 'clone' ? 'selected' : ''}>Clone</option>
+  <option value="ssh" ${proxy.type === 'ssh' ? 'selected' : ''}>SSH</option>
+  <option value="all" ${proxy.type === 'all' ? 'selected' : ''}>全部</option>
+</select></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-desc" value="${proxy.desc || ''}" placeholder="备注（可选）" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-region" value="${proxy.region || ''}" placeholder="地区（可选）" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="display:flex;gap:8px">
+  <button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-save-edit" data-ghhelper-nt="1">保存</button>
+  <button class="ghhelper-btn" id="ghhelper-cancel-edit" data-ghhelper-nt="1">取消</button>
+</div>`;
+            body.insertBefore(form, document.getElementById('ghhelper-add-proxy').parentNode);
+
+            document.getElementById('ghhelper-save-edit').addEventListener('click', () => {
+                const name = document.getElementById('ghhelper-edit-name').value.trim();
+                const url = document.getElementById('ghhelper-edit-url').value.trim();
+                if (!name || !url) { alert('名称和 URL 必填'); return; }
+                ProxyManager.editProxy(id, {
+                    name, url,
+                    type: document.getElementById('ghhelper-edit-type').value,
+                    desc: document.getElementById('ghhelper-edit-desc').value.trim(),
+                    region: document.getElementById('ghhelper-edit-region').value.trim()
+                });
+                SettingsPanel.renderTab('proxies');
+                DOMRenderer.reprocessAll();
+            });
+            document.getElementById('ghhelper-cancel-edit').addEventListener('click', () => {
                 form.remove();
             });
         },
