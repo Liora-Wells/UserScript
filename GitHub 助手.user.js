@@ -1302,6 +1302,10 @@
             else if (tab === 'help') this.renderHelpTab(body);
         },
 
+        _escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        },
+
         renderProxyTab(body) {
             const all = StorageManager.getProxies();
             const enabledCount = all.filter(p => p.enabled).length;
@@ -1321,7 +1325,7 @@
             html += '<option value="all">全部</option><option value="download">下载</option><option value="raw">Raw</option><option value="clone">Clone</option><option value="ssh">SSH</option></select>';
             html += '<span data-ghhelper-nt="1">状态:</span><select class="ghhelper-select" id="ghhelper-filter-status" data-ghhelper-nt="1">';
             html += '<option value="all">全部</option><option value="enabled">启用</option><option value="disabled">禁用</option></select>';
-            html += '<span data-ghhelper-nt="1" style="margin-left:auto;color:var(--fgColor-muted,var(--color-fg-muted))">启用 ' + enabledCount + ' / 禁用 ' + disabledCount + '</span>';
+            html += '<span id="ghhelper-proxy-count" data-ghhelper-nt="1" style="margin-left:auto;color:var(--fgColor-muted,var(--color-fg-muted))">启用 ' + enabledCount + ' / 禁用 ' + disabledCount + '</span>';
             html += '</div>';
 
             // 列表
@@ -1379,12 +1383,12 @@
                 html += '<div class="ghhelper-proxy-card" data-ghhelper-nt="1" style="border:1px solid var(--color-border-default,#30363d);border-radius:8px;padding:10px 12px;margin-bottom:6px">';
                 html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
                 html += '<span data-ghhelper-nt="1" style="width:8px;height:8px;border-radius:50%;background-color:' + dotColor + ';flex-shrink:0"></span>';
-                html += '<span data-ghhelper-nt="1" style="font-weight:600;font-size:13px;flex:1;min-width:0">' + p.name + '</span>';
+                html += '<span data-ghhelper-nt="1" style="font-weight:600;font-size:13px;flex:1;min-width:0">' + this._escapeHtml(p.name) + '</span>';
                 html += '<span data-ghhelper-nt="1" class="Label" style="font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid">[' + typeBadge + ']</span>';
-                if (p.region) html += '<span data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">' + p.region + '</span>';
+                if (p.region) html += '<span data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">' + this._escapeHtml(p.region) + '</span>';
                 html += '</div>';
-                html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted));word-break:break-all;margin-bottom:6px">' + p.url + '</div>';
-                if (p.desc) html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted));margin-bottom:6px">' + p.desc + '</div>';
+                html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted));word-break:break-all;margin-bottom:6px">' + this._escapeHtml(p.url) + '</div>';
+                if (p.desc) html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted));margin-bottom:6px">' + this._escapeHtml(p.desc) + '</div>';
                 html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px">';
                 html += '<span data-ghhelper-nt="1" class="Label ' + (p.builtIn ? '' : 'Label--success') + '" style="font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid">' + sourceBadge + '</span>';
                 html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (p.enabled ? 'checked' : '') + ' data-proxy-toggle="' + p.id + '"><span class="ghhelper-toggle-slider"></span></label>';
@@ -1402,8 +1406,9 @@
                 cb.addEventListener('change', function () {
                     ProxyManager.toggleProxy(this.dataset.proxyToggle);
                     DOMRenderer.reprocessAll();
-                    // 刷新筛选计数
-                    SettingsPanel.renderTab('proxies');
+                    // 仅刷新列表与计数，保留筛选器状态
+                    SettingsPanel._renderProxyList();
+                    SettingsPanel._refreshProxyCount();
                 });
             });
             listEl.querySelectorAll('[data-proxy-edit]').forEach(btn => {
@@ -1420,14 +1425,27 @@
                         : '确认删除此自定义加速源？';
                     if (confirm(msg)) {
                         ProxyManager.deleteProxy(id);
-                        SettingsPanel.renderTab('proxies');
+                        SettingsPanel._renderProxyList();
+                        SettingsPanel._refreshProxyCount();
                         DOMRenderer.reprocessAll();
                     }
                 });
             });
         },
 
+        _refreshProxyCount() {
+            const all = StorageManager.getProxies();
+            const enabledCount = all.filter(p => p.enabled).length;
+            const disabledCount = all.length - enabledCount;
+            const countEl = document.getElementById('ghhelper-proxy-count');
+            if (countEl) {
+                countEl.textContent = '启用 ' + enabledCount + ' / 禁用 ' + disabledCount;
+            }
+        },
+
         showAddProxyForm(body) {
+            // 清理已有表单（添加/编辑表单互斥）
+            body.querySelectorAll('[data-ghhelper-element="1"]').forEach(el => el.remove());
             const form = document.createElement('div');
             form.setAttribute('data-ghhelper-nt', '1');
             form.setAttribute('data-ghhelper-element', '1');
@@ -1468,14 +1486,16 @@
         showEditProxyForm(body, id) {
             const proxy = StorageManager.getProxies().find(p => p.id === id);
             if (!proxy) return;
+            // 清理已有表单（添加/编辑表单互斥）
+            body.querySelectorAll('[data-ghhelper-element="1"]').forEach(el => el.remove());
             const form = document.createElement('div');
             form.setAttribute('data-ghhelper-nt', '1');
             form.setAttribute('data-ghhelper-element', '1');
             form.style.cssText = 'border:1px solid var(--color-border-default,#30363d);border-radius:8px;padding:12px;margin-bottom:12px';
             form.innerHTML = `
 <p data-ghhelper-nt="1" style="margin:0 0 8px;font-weight:600">编辑加速源</p>
-<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-name" value="${proxy.name}" data-ghhelper-nt="1" style="margin-bottom:6px"></div>
-<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-url" value="${proxy.url}" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-name" value="${this._escapeHtml(proxy.name)}" data-ghhelper-nt="1" style="margin-bottom:6px"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-url" value="${this._escapeHtml(proxy.url)}" data-ghhelper-nt="1"></div>
 <div data-ghhelper-nt="1" style="margin-bottom:6px"><select class="ghhelper-select" id="ghhelper-edit-type" data-ghhelper-nt="1">
   <option value="download" ${proxy.type === 'download' ? 'selected' : ''}>下载/ZIP</option>
   <option value="raw" ${proxy.type === 'raw' ? 'selected' : ''}>Raw</option>
@@ -1483,8 +1503,8 @@
   <option value="ssh" ${proxy.type === 'ssh' ? 'selected' : ''}>SSH</option>
   <option value="all" ${proxy.type === 'all' ? 'selected' : ''}>全部</option>
 </select></div>
-<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-desc" value="${proxy.desc || ''}" placeholder="备注（可选）" data-ghhelper-nt="1"></div>
-<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-region" value="${proxy.region || ''}" placeholder="地区（可选）" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-desc" value="${this._escapeHtml(proxy.desc || '')}" placeholder="备注（可选）" data-ghhelper-nt="1"></div>
+<div data-ghhelper-nt="1" style="margin-bottom:6px"><input class="ghhelper-input" id="ghhelper-edit-region" value="${this._escapeHtml(proxy.region || '')}" placeholder="地区（可选）" data-ghhelper-nt="1"></div>
 <div data-ghhelper-nt="1" style="display:flex;gap:8px">
   <button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-save-edit" data-ghhelper-nt="1">保存</button>
   <button class="ghhelper-btn" id="ghhelper-cancel-edit" data-ghhelper-nt="1">取消</button>
