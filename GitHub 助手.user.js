@@ -1775,6 +1775,170 @@
             return html;
         },
 
+        _renderEditForm(mode, proxy) {
+            // mode: 'edit' | 'add'
+            // proxy: 编辑时为原对象，添加时为 { type: 'download', enabled: true } 默认值
+            const isEdit = mode === 'edit';
+            const title = isEdit ? '编辑：' + proxy.name : '添加加速源';
+            const sourceLabel = isEdit ? (proxy.builtIn ? '内置' : '自定义') : '自定义';
+            const sourceClass = isEdit
+                ? (proxy.builtIn ? 'ghhelper-proxy-tag-builtin' : 'ghhelper-proxy-tag-custom')
+                : 'ghhelper-proxy-tag-custom';
+            const showModified = isEdit && proxy.builtIn && proxy.edited;
+
+            const name = isEdit ? this._escapeHtml(proxy.name || '') : '';
+            const url = isEdit ? this._escapeHtml(proxy.url || '') : '';
+            const type = isEdit ? proxy.type : 'download';
+            const region = isEdit ? this._escapeHtml(proxy.region || '') : '';
+            const desc = isEdit ? this._escapeHtml(proxy.desc || '') : '';
+            const enabled = isEdit ? proxy.enabled : true;
+
+            let html = '<div class="ghhelper-proxy-form" data-ghhelper-element="1" data-ghhelper-nt="1">';
+            // 表单头
+            html += '<div class="ghhelper-proxy-form-header" data-ghhelper-nt="1">';
+            html += '<span class="ghhelper-proxy-form-title" data-ghhelper-nt="1">▾ ' + this._escapeHtml(title) + '</span>';
+            html += '<span class="ghhelper-proxy-tag ' + sourceClass + '" data-ghhelper-nt="1">[' + sourceLabel + ']</span>';
+            if (showModified) {
+                html += '<span class="ghhelper-proxy-modified" data-ghhelper-nt="1">已修改</span>';
+            }
+            html += '<button class="ghhelper-proxy-form-close" data-form-cancel="1" data-ghhelper-nt="1">×</button>';
+            html += '</div>';
+            // 字段网格
+            html += '<div class="ghhelper-proxy-form-grid" data-ghhelper-nt="1">';
+            // 名称
+            html += '<div class="ghhelper-proxy-form-field" data-ghhelper-nt="1">';
+            html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1">名称</label>';
+            html += '<input class="ghhelper-input" data-form-field="name" data-ghhelper-nt="1" value="' + name + '">';
+            html += '</div>';
+            // 类型
+            html += '<div class="ghhelper-proxy-form-field" data-ghhelper-nt="1">';
+            html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1">类型</label>';
+            html += '<select class="ghhelper-select" data-form-field="type" data-ghhelper-nt="1">';
+            ['download', 'raw', 'clone', 'ssh', 'all'].forEach(t => {
+                const labels = { download: '下载/ZIP', raw: 'Raw', clone: 'Clone', ssh: 'SSH', all: '全部' };
+                html += '<option value="' + t + '"' + (type === t ? ' selected' : '') + '>' + labels[t] + '</option>';
+            });
+            html += '</select>';
+            html += '</div>';
+            // URL（整行）
+            html += '<div class="ghhelper-proxy-form-field ghhelper-proxy-form-field-full" data-ghhelper-nt="1">';
+            html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1">URL</label>';
+            html += '<input class="ghhelper-input" data-form-field="url" data-ghhelper-nt="1" value="' + url + '" placeholder="https://example.com/https://github.com">';
+            html += '</div>';
+            // 地区
+            html += '<div class="ghhelper-proxy-form-field" data-ghhelper-nt="1">';
+            html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1">地区</label>';
+            html += '<input class="ghhelper-input" data-form-field="region" data-ghhelper-nt="1" value="' + region + '">';
+            html += '</div>';
+            // 启用
+            html += '<div class="ghhelper-proxy-form-field" data-ghhelper-nt="1">';
+            html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1">启用</label>';
+            html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" data-form-field="enabled"' + (enabled ? ' checked' : '') + '><span class="ghhelper-toggle-slider"></span></label>';
+            html += '</div>';
+            // 备注（整行）
+            html += '<div class="ghhelper-proxy-form-field ghhelper-proxy-form-field-full" data-ghhelper-nt="1">';
+            html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1">备注</label>';
+            html += '<input class="ghhelper-input" data-form-field="desc" data-ghhelper-nt="1" value="' + desc + '">';
+            html += '</div>';
+            html += '</div>';
+            // 操作按钮
+            html += '<div class="ghhelper-proxy-form-actions" data-ghhelper-nt="1">';
+            html += '<button class="ghhelper-btn" data-form-cancel="1" data-ghhelper-nt="1">取消</button>';
+            html += '<button class="ghhelper-btn ghhelper-btn-primary" data-form-save="1" data-form-mode="' + mode + '"' + (isEdit ? ' data-form-id="' + this._escapeHtml(proxy.id) + '"' : '') + ' data-ghhelper-nt="1">保存</button>';
+            html += '</div>';
+            html += '</div>';
+            return html;
+        },
+
+        _showEditForm(id) {
+            const proxy = StorageManager.getProxies().find(p => p.id === id);
+            if (!proxy) {
+                alert('该加速源已被删除');
+                this._renderGroups();
+                return;
+            }
+            // 渲染：替换该卡片的 innerHTML 为表单
+            const listEl = document.getElementById('ghhelper-proxy-list');
+            if (!listEl) return;
+            const cardEl = listEl.querySelector('[data-proxy-id="' + id + '"]');
+            if (!cardEl) return;
+            cardEl.innerHTML = this._renderEditForm('edit', proxy);
+            cardEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        },
+
+        _showAddForm() {
+            // 在列表顶部插入一张临时卡片，展开为添加表单
+            const listEl = document.getElementById('ghhelper-proxy-list');
+            if (!listEl) return;
+            // 若已有临时卡片，先移除
+            const existing = listEl.querySelector('[data-proxy-id="__add__"]');
+            if (existing) existing.remove();
+            const tempCard = document.createElement('div');
+            tempCard.className = 'ghhelper-proxy-card';
+            tempCard.setAttribute('data-proxy-id', '__add__');
+            tempCard.setAttribute('data-ghhelper-nt', '1');
+            tempCard.setAttribute('data-ghhelper-element', '1');
+            tempCard.innerHTML = this._renderEditForm('add', { type: 'download', enabled: true });
+            listEl.insertBefore(tempCard, listEl.firstChild);
+            tempCard.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        },
+
+        _handleFormSave(saveBtn) {
+            const formEl = saveBtn.closest('.ghhelper-proxy-form');
+            if (!formEl) return;
+            const mode = saveBtn.dataset.formMode;
+            const id = saveBtn.dataset.formId;
+            const get = (field) => {
+                const el = formEl.querySelector('[data-form-field="' + field + '"]');
+                if (!el) return '';
+                if (el.type === 'checkbox') return el.checked;
+                return el.value.trim();
+            };
+            const showError = (field, msg) => {
+                const fieldEl = formEl.querySelector('[data-form-field="' + field + '"]');
+                if (!fieldEl) return;
+                const wrapper = fieldEl.closest('.ghhelper-proxy-form-field');
+                if (!wrapper) return;
+                let errEl = wrapper.querySelector('.ghhelper-proxy-form-error');
+                if (!errEl) {
+                    errEl = document.createElement('div');
+                    errEl.className = 'ghhelper-proxy-form-error';
+                    errEl.setAttribute('data-ghhelper-nt', '1');
+                    wrapper.appendChild(errEl);
+                }
+                errEl.textContent = msg;
+            };
+
+            const name = get('name');
+            const url = get('url');
+            const type = get('type');
+            const region = get('region');
+            const desc = get('desc');
+            const enabled = get('enabled');
+
+            // 校验
+            if (!name) { showError('name', '名称必填'); return; }
+            if (!url) { showError('url', 'URL 必填'); return; }
+            if (!/^https?:\/\//.test(url) && !/^ssh:\/\//.test(url)) {
+                showError('url', 'URL 必须以 http(s):// 或 ssh:// 开头');
+                return;
+            }
+
+            const updates = { name, url, type, region, desc, enabled };
+            if (mode === 'edit') {
+                const ok = ProxyManager.editProxy(id, updates);
+                if (!ok) {
+                    alert('该加速源已被删除');
+                }
+            } else {
+                ProxyManager.addCustom(updates);
+            }
+            // 保存成功：重渲 Chip + 分组
+            this._renderChipRow();
+            this._renderGroups();
+            DOMRenderer.reprocessAll();
+        },
+
         _renderProxyList() {
             const listEl = document.getElementById('ghhelper-proxy-list');
             if (!listEl) return;
