@@ -222,48 +222,93 @@
             return this.getAll().filter(p => p.enabled && (p.type === type || p.type === 'all'));
         },
 
+        // 自定义源 = builtIn 为 false
         getCustom() {
-            return StorageManager.getProxies();
+            return StorageManager.getProxies().filter(p => !p.builtIn);
+        },
+
+        // 内置源 = builtIn 为 true
+        getBuiltin() {
+            return StorageManager.getProxies().filter(p => p.builtIn);
         },
 
         addCustom(proxy) {
-            const custom = this.getCustom();
+            const all = StorageManager.getProxies();
             proxy.id = 'custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
             proxy.builtIn = false;
             proxy.enabled = true;
-            custom.push(proxy);
-            StorageManager.setProxies(custom);
-            LOG('ProxyManager.addCustom:', proxy.name, 'id:', proxy.id, '当前自定义源总数:', custom.length);
+            proxy.edited = false;
+            all.push(proxy);
+            StorageManager.setProxies(all);
+            LOG('ProxyManager.addCustom:', proxy.name, 'id:', proxy.id, '当前总数:', all.length);
             return proxy;
         },
 
-        updateCustom(id, updates) {
-            const custom = this.getCustom();
-            const idx = custom.findIndex(p => p.id === id);
+        // 统一编辑：含内置源（编辑后标记 edited: true）
+        editProxy(id, updates) {
+            const all = StorageManager.getProxies();
+            const idx = all.findIndex(p => p.id === id);
             if (idx === -1) return false;
-            Object.assign(custom[idx], updates);
-            StorageManager.setProxies(custom);
+            Object.assign(all[idx], updates);
+            if (all[idx].builtIn) all[idx].edited = true;
+            StorageManager.setProxies(all);
+            LOG('ProxyManager.editProxy: id=' + id + ', edited=' + all[idx].edited);
             return true;
         },
 
-        deleteCustom(id) {
-            const custom = this.getCustom();
-            const idx = custom.findIndex(p => p.id === id);
-            LOG('ProxyManager.deleteCustom: id=' + id + ', 找到索引=' + idx + ', 总数=' + custom.length);
+        // 统一删除：内置源 id 记入 deletedBuiltinIds
+        deleteProxy(id) {
+            const all = StorageManager.getProxies();
+            const idx = all.findIndex(p => p.id === id);
+            LOG('ProxyManager.deleteProxy: id=' + id + ', 找到索引=' + idx + ', 总数=' + all.length);
             if (idx === -1) return false;
-            custom.splice(idx, 1);
-            StorageManager.setProxies(custom);
-            LOG('ProxyManager.deleteCustom: 删除成功, 剩余=' + custom.length);
-            return true;
-        },
-
-        toggleBuiltin(id) {
-            const builtin = BUILTIN_PROXIES.find(p => p.id === id);
-            if (builtin) {
-                builtin.enabled = !builtin.enabled;
-                return true;
+            const deleted = all[idx];
+            all.splice(idx, 1);
+            StorageManager.setProxies(all);
+            // 内置源记录删除，升级时不再自动恢复
+            if (deleted.builtIn) {
+                const deletedIds = StorageManager.getDeletedBuiltinIds();
+                if (!deletedIds.includes(id)) {
+                    deletedIds.push(id);
+                    StorageManager.setDeletedBuiltinIds(deletedIds);
+                }
             }
-            return false;
+            LOG('ProxyManager.deleteProxy: 删除成功, 剩余=' + all.length);
+            return true;
+        },
+
+        // 统一启用/禁用
+        toggleProxy(id) {
+            const all = StorageManager.getProxies();
+            const idx = all.findIndex(p => p.id === id);
+            if (idx === -1) return false;
+            all[idx].enabled = !all[idx].enabled;
+            StorageManager.setProxies(all);
+            LOG('ProxyManager.toggleProxy: id=' + id + ', enabled=' + all[idx].enabled);
+            return true;
+        },
+
+        // 恢复默认：清空删除记录，把缺失的内置源合并回，已编辑的重置
+        restoreDefaults() {
+            const all = StorageManager.getProxies();
+            const existingIds = new Set(all.map(p => p.id));
+            let restored = 0;
+            BUILTIN_PROXIES.forEach(builtin => {
+                if (!existingIds.has(builtin.id)) {
+                    all.push(Object.assign({}, builtin, { edited: false }));
+                    restored++;
+                } else {
+                    // 已存在的内置源重置为常量值（保留 enabled）
+                    const idx = all.findIndex(p => p.id === builtin.id);
+                    if (all[idx].builtIn) {
+                        all[idx] = Object.assign({}, builtin, { edited: false, enabled: all[idx].enabled });
+                    }
+                }
+            });
+            StorageManager.setProxies(all);
+            StorageManager.setDeletedBuiltinIds([]);
+            LOG('ProxyManager.restoreDefaults: 恢复 ' + restored + ' 条内置源');
+            return restored;
         },
 
         buildUrl(proxy, originalPath, type) {
@@ -286,11 +331,12 @@
 
         getDisplayProxies(type) {
             const maxDisplay = StorageManager.getMaxDisplay();
-            const custom = this.getCustom().filter(p => p.enabled && (p.type === type || p.type === 'all'));
-            const builtin = BUILTIN_PROXIES.filter(p => p.enabled && (p.type === type || p.type === 'all'));
+            // 自定义源优先，内置源补齐
+            const all = this.getEnabled(type);
+            const custom = all.filter(p => !p.builtIn);
+            const builtin = all.filter(p => p.builtIn);
             const result = { pinned: [], overflow: [] };
 
-            // 自定义源优先；内置源补齐，超出部分放入下拉
             custom.forEach(p => result.pinned.push(p));
             const remaining = Math.max(0, maxDisplay - result.pinned.length);
             builtin.slice(0, remaining).forEach(p => result.pinned.push(p));
@@ -1208,14 +1254,14 @@
             });
             body.querySelectorAll('input[data-builtin-id]').forEach(cb => {
                 cb.addEventListener('change', function () {
-                    ProxyManager.toggleBuiltin(this.dataset.builtinId);
+                    ProxyManager.toggleProxy(this.dataset.builtinId);
                 });
             });
             body.querySelectorAll('.ghhelper-btn-danger').forEach(btn => {
                 btn.addEventListener('click', function () {
                     const id = this.dataset.proxyId;
                     LOG('SettingsPanel 删除按钮点击, proxyId:', id);
-                    ProxyManager.deleteCustom(id);
+                    ProxyManager.deleteProxy(id);
                     SettingsPanel.renderTab('proxies');
                 });
             });
