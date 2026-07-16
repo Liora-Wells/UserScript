@@ -324,8 +324,9 @@
                 return url + originalPath.replace('/blob/', '/');
             }
             if (type === 'ssh') {
-                const repoPath = originalPath.replace(/^\//, '');
-                return url + repoPath + '.git';
+                // originalPath 形如 "owner/repo.git"（从 input value split(':')[1] 得到）
+                // 直接拼接，不再追加 .git（原值已包含）
+                return url + originalPath.replace(/^\//, '');
             }
             return url + originalPath;
         },
@@ -600,6 +601,11 @@
 .ghhelper-version-section>summary{display:flex;align-items:center;gap:8px;padding:8px 4px;cursor:pointer;list-style:none;color:var(--color-fg-muted,#8b949e);font-size:13px}
 .ghhelper-version-section>summary::-webkit-details-marker{display:none}
 .ghhelper-version-section>summary:hover{color:var(--color-fg-default,#e6edf3)}
+.ghhelper-raw-btn{border-radius:0!important;margin-left:-1px!important}
+.ghhelper-clone-row{margin-top:4px}
+.ghhelper-clone-row>input{cursor:pointer!important}
+.ghhelper-clone-row>input:hover{background-color:var(--color-canvas-subtle,#161b22)!important}
+.ghhelper-clone-hint{font-size:12px;color:var(--color-fg-muted,#8b949e);margin-top:4px}
 .ghhelper-version-line{flex:1;height:1px;background-color:var(--color-border-muted,#21262d)}
 .ghhelper-version-toggle{font-size:11px}
 .ghhelper-scroll-top{position:fixed;right:24px;bottom:24px;z-index:9999;width:40px;height:40px;border-radius:50%;border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.3);opacity:0;pointer-events:none;transition:opacity 0.2s ease}
@@ -1225,6 +1231,148 @@
             });
         },
 
+        // Raw 加速：在文件查看页 Raw 按钮后追加一串加速按钮
+        // 样式参考 docs/Github 增强 - 高速下载.js：紧贴原按钮、复用其 className
+        processRawButtons() {
+            if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
+            const rawBtn = document.querySelector('a[data-testid="raw-button"]');
+            if (!rawBtn) return;
+            // 已处理且加速源数量未变则跳过
+            const disp = ProxyManager.getDisplayProxies('raw');
+            const all = [...disp.pinned, ...disp.overflow];
+            const prevCount = parseInt(rawBtn.dataset.ghhelperRawCount || '0');
+            if (rawBtn.dataset.ghhelperRawProcessed === 'true' && prevCount === all.length) return;
+
+            // 清理旧按钮
+            const parent = rawBtn.parentNode;
+            parent.querySelectorAll('.ghhelper-raw-btn').forEach(e => e.remove());
+            if (!all.length) { rawBtn.dataset.ghhelperRawProcessed = 'true'; rawBtn.dataset.ghhelperRawCount = '0'; return; }
+            rawBtn.dataset.ghhelperRawProcessed = 'true';
+            rawBtn.dataset.ghhelperRawCount = String(all.length);
+
+            const href = window.location.pathname;
+            // 倒序插入，使最终顺序为正序（每个都 insertAdjacentHTML afterend）
+            all.slice().reverse().forEach(p => {
+                const url = ProxyManager.buildUrl(p, href, 'raw');
+                const btn = document.createElement('a');
+                btn.className = rawBtn.className + ' ghhelper-raw-btn';
+                btn.setAttribute('data-ghhelper-element', '1');
+                btn.setAttribute('data-ghhelper-nt', '1');
+                btn.href = url;
+                btn.target = '_blank';
+                btn.rel = 'noopener noreferrer';
+                btn.textContent = p.name;
+                btn.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '') +
+                    '\n\n提示：[Alt + 左键] 可直接下载，[右键 - 另存为...] 保存文件';
+                rawBtn.insertAdjacentElement('afterend', btn);
+            });
+            LOG('  processRawButtons: 已添加 ' + all.length + ' 个 Raw 加速按钮');
+        },
+
+        // Clone 加速：在 Code 下拉菜单的 HTTPS clone input 下方插入加速源 input
+        // 样式参考 docs/Github 增强 - 高速下载.js：克隆原 input，堆叠显示
+        processCloneButtons(target) {
+            if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
+            const html = target.querySelector('input[value^="https://"]:not([data-ghhelper-clone-processed])');
+            if (!html) return;
+            // 必须是 github URL（避免误匹配其他 input）
+            if (!html.value.includes('github.com')) return;
+            html.setAttribute('data-ghhelper-clone-processed', '1');
+
+            const disp = ProxyManager.getDisplayProxies('clone');
+            const all = [...disp.pinned, ...disp.overflow];
+            // 清理旧元素
+            target.querySelectorAll('.ghhelper-clone-row').forEach(e => e.remove());
+            if (!all.length) return;
+
+            const host = window.location.host;
+            const splitVal = html.value.split(host);
+            if (splitVal.length < 2) return;
+            const href_split = splitVal[1]; // 形如 /owner/repo.git
+
+            const wrapperEl = html.parentElement;
+            if (!wrapperEl) return;
+
+            // 在原 input 后依次插入每个加速源的 input
+            all.forEach(p => {
+                const url = ProxyManager.buildUrl(p, href_split, 'clone');
+                const row = document.createElement('div');
+                row.className = 'ghhelper-clone-row ' + wrapperEl.className;
+                row.setAttribute('data-ghhelper-element', '1');
+                row.setAttribute('data-ghhelper-nt', '1');
+
+                const input = document.createElement('input');
+                input.className = html.className;
+                input.setAttribute('data-ghhelper-nt', '1');
+                input.value = 'git clone ' + url;
+                input.readOnly = true;
+                input.title = url + '\n\n点击自动复制';
+                input.style.cursor = 'pointer';
+                input.addEventListener('click', () => {
+                    try { GM_setClipboard(input.value); } catch (e) {}
+                });
+                row.appendChild(input);
+                wrapperEl.insertAdjacentElement('afterend', row);
+            });
+            LOG('  processCloneButtons: 已添加 ' + all.length + ' 个 Clone 加速源');
+        },
+
+        // SSH 加速：在 Code 下拉菜单的 SSH clone input 下方插入加速源 input
+        processSSHButtons(target) {
+            if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
+            const html = target.querySelector('input[value^="git@"]:not([data-ghhelper-ssh-processed])');
+            if (!html) return;
+            if (!html.value.includes('github.com')) return;
+            html.setAttribute('data-ghhelper-ssh-processed', '1');
+
+            const disp = ProxyManager.getDisplayProxies('ssh');
+            const all = [...disp.pinned, ...disp.overflow];
+            target.querySelectorAll('.ghhelper-ssh-row').forEach(e => e.remove());
+            if (!all.length) return;
+
+            const splitVal = html.value.split(':');
+            if (splitVal.length < 2) return;
+            const href_split = splitVal[1]; // 形如 owner/repo.git
+
+            const wrapperEl = html.parentElement;
+            if (!wrapperEl) return;
+
+            all.forEach(p => {
+                const url = ProxyManager.buildUrl(p, href_split, 'ssh');
+                const row = document.createElement('div');
+                row.className = 'ghhelper-ssh-row ' + wrapperEl.className;
+                row.setAttribute('data-ghhelper-element', '1');
+                row.setAttribute('data-ghhelper-nt', '1');
+
+                const input = document.createElement('input');
+                input.className = html.className;
+                input.setAttribute('data-ghhelper-nt', '1');
+                input.value = 'git clone ' + url;
+                input.readOnly = true;
+                input.title = url + '\n\n点击自动复制';
+                input.style.cursor = 'pointer';
+                input.addEventListener('click', () => {
+                    try { GM_setClipboard(input.value); } catch (e) {}
+                });
+                row.appendChild(input);
+                wrapperEl.insertAdjacentElement('afterend', row);
+            });
+            LOG('  processSSHButtons: 已添加 ' + all.length + ' 个 SSH 加速源');
+        },
+
+        // 重渲 Raw/Clone/SSH（加速源变更后）
+        reprocessRawCloneSSH() {
+            // Raw
+            document.querySelectorAll('a[data-testid="raw-button"]').forEach(btn => {
+                btn.dataset.ghhelperRawProcessed = '';
+                btn.dataset.ghhelperRawCount = '0';
+            });
+            this.processRawButtons();
+            // Clone/SSH：清理标记，等待下次打开下拉菜单时重新处理
+            document.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
+            document.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
+        },
+
         reprocessAll() {
             const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]:not([data-ghhelper-wrapper])');
             LOG('  reprocessAll 调用, 已处理 details 数:', targets.length);
@@ -1235,6 +1383,8 @@
                     if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(d);
                 }
             });
+            // 同步刷新 Raw/Clone/SSH 加速按钮
+            this.reprocessRawCloneSSH();
         },
 
         findTagName(detailsElem) {
@@ -1354,8 +1504,8 @@
                 }
 
                 wrap.appendChild(body);
-                el.parentNode.insertBefore(wrap, el.nextSibling);
-                el.style.display = 'none';
+                // 用 wrap 完全替换原 el，避免原 el 残留的 margin/hidden 空间与 wrap 边框重叠
+                el.parentNode.replaceChild(wrap, el);
             });
         },
 
@@ -2068,7 +2218,7 @@
                 { key: 'downloadCount', icon: '📥', label: '显示下载量', desc: '从 GitHub API 获取每个文件的下载次数', impact: '文件行右侧显示下载量图标+数字' },
                 { key: 'replaceTime', icon: '🕐', label: '精确时间替换', desc: '将"3天前"替换为"2026-07-13 14:30"', impact: '关闭以兼容中文化脚本，开启后两者可能冲突' },
                 { key: 'collapsibleNotes', icon: '📖', label: '可折叠更新日志', desc: '将更新日志包进可折叠区域，多版本时支持分段折叠', impact: 'Release 标题下方显示"更新日志"折叠栏' },
-                { key: 'proxyButtons', icon: '⚡', label: '加速下载按钮', desc: '在每个 Release 文件旁显示加速下载按钮', impact: '文件行右侧显示加速源按钮+下拉菜单' },
+                { key: 'proxyButtons', icon: '⚡', label: '加速下载按钮', desc: 'Release 文件、Raw、Clone、SSH 旁显示加速下载按钮', impact: '文件行右侧显示加速源按钮+下拉菜单；Raw 按钮旁加速；Code 菜单 Clone/SSH 下方加速' },
                 { key: 'scrollToTop', icon: '↑', label: '回到顶部按钮', desc: '滚动超过 300px 后显示悬浮回到顶部按钮', impact: '页面右下角悬浮箭头按钮' }
             ];
             let html = '<div class="ghhelper-settings-section"><h4>功能开关</h4>';
@@ -2263,11 +2413,18 @@
 
         processAllDetails();
 
+        // Raw 加速按钮（文件查看页）
+        DOMRenderer.processRawButtons();
+
+        // Code 下拉菜单（Clone/SSH）监听
+        startPortalObserver();
+
         if (_initRetryCount < MAX_RETRY) {
             _initRetryCount++;
             setTimeout(() => {
                 LOG('延迟重试 processAllDetails, 第', _initRetryCount, '次');
                 processAllDetails();
+                DOMRenderer.processRawButtons();
                 _initRetryCount = 0;
             }, RETRY_DELAY);
         }
@@ -2283,11 +2440,41 @@
                 debounceTimer = null;
                 LOG('MutationObserver 触发 processAllDetails');
                 processAllDetails();
+                // Raw 按钮可能在 pjax 后重新渲染
+                DOMRenderer.processRawButtons();
             }, 300);
         });
         observer.observe(document.body, { childList: true, subtree: true });
         LOG('MutationObserver 已启动');
         return observer;
+    }
+
+    // 监听 Code 下拉菜单的 portal，处理 Clone/SSH 加速源注入
+    function startPortalObserver() {
+        const tryStart = () => {
+            const portal = document.getElementById('__primerPortalRoot__');
+            if (!portal) {
+                // portal 尚未生成，延迟重试
+                setTimeout(tryStart, 1000);
+                return;
+            }
+            if (portal.dataset.ghhelperObserved === '1') return;
+            portal.dataset.ghhelperObserved = '1';
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach(m => {
+                    m.addedNodes.forEach(target => {
+                        if (target.nodeType !== 1) return;
+                        if (target.tagName !== 'DIV') return;
+                        // Code 下拉菜单、对话框等都会渲染到 portal 下
+                        DOMRenderer.processCloneButtons(target);
+                        DOMRenderer.processSSHButtons(target);
+                    });
+                });
+            });
+            observer.observe(portal, { childList: true, subtree: true });
+            LOG('Portal MutationObserver 已启动');
+        };
+        tryStart();
     }
 
     registerMenus();
