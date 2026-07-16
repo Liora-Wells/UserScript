@@ -523,42 +523,42 @@
 .ghhelper-row{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;width:100%!important}
 .ghhelper-left{min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:6px;overflow:hidden}
 .ghhelper-right{flex-shrink:0;display:flex;align-items:center;gap:8px}
-.ghhelper-group-win{border-left:4px solid var(--color-accent-emphasis,#1f6feb)!important;background-color:var(--color-accent-subtle,rgba(56,139,253,0.1))!important}
-.ghhelper-group-win:hover{background-color:var(--color-accent-muted,rgba(56,139,253,0.15))!important}
-.ghhelper-group-mac{border-left:4px solid var(--color-done-emphasis,#8957e5)!important;background-color:var(--color-done-subtle,rgba(137,87,229,0.1))!important}
-.ghhelper-group-mac:hover{background-color:var(--color-done-muted,rgba(137,87,229,0.15))!important}
-.ghhelper-group-mobile{border-left:4px solid #e3b341!important;background-color:rgba(227,179,65,0.12)!important}
-.ghhelper-group-mobile:hover{background-color:rgba(227,179,65,0.18)!important}
-.ghhelper-group-linux-deb{border-left:4px solid var(--color-severe-emphasis,#db6d28)!important;background-color:var(--color-severe-subtle,rgba(219,109,40,0.1))!important}
-.ghhelper-group-linux-deb:hover{background-color:var(--color-severe-muted,rgba(219,109,40,0.15))!important}
-.ghhelper-group-linux-rpm{border-left:4px solid var(--color-danger-emphasis,#f85149)!important;background-color:var(--color-danger-subtle,rgba(248,81,73,0.1))!important}
-.ghhelper-group-linux-rpm:hover{background-color:var(--color-danger-muted,rgba(248,81,73,0.15))!important}
-.ghhelper-group-linux-arch{border-left:4px solid var(--color-sponsors-emphasis,#bf4b8a)!important;background-color:var(--color-sponsors-subtle,rgba(191,75,138,0.1))!important}
-.ghhelper-group-linux-arch:hover{background-color:var(--color-sponsors-muted,rgba(191,75,138,0.15))!important}
-.ghhelper-group-linux-appimage{border-left:4px solid #20c997!important;background-color:rgba(32,201,151,0.1)!important}
-.ghhelper-group-linux-appimage:hover{background-color:rgba(32,201,151,0.15)!important}
-.ghhelper-group-linux-flatpak{border-left:4px solid #0abda0!important;background-color:rgba(10,189,160,0.1)!important}
-.ghhelper-group-linux-flatpak:hover{background-color:rgba(10,189,160,0.15)!important}
-.ghhelper-group-linux-ipk{border-left:4px solid #e3b341!important;background-color:rgba(227,179,65,0.1)!important}
-.ghhelper-group-linux-ipk:hover{background-color:rgba(227,179,65,0.15)!important}
-.ghhelper-group-linux-snap{border-left:4px solid #6366f1!important;background-color:rgba(99,102,241,0.1)!important}
-.ghhelper-group-linux-snap:hover{background-color:rgba(99,102,241,0.15)!important}
-.ghhelper-group-linux-other{border-left:4px solid var(--color-attention-emphasis,#9e6a03)!important;background-color:var(--color-attention-subtle,rgba(210,153,34,0.1))!important}
-.ghhelper-group-linux-other:hover{background-color:var(--color-attention-muted,rgba(210,153,34,0.15))!important}
+.ghhelper-group-win{border-left:4px solid #0969da!important;background-color:rgba(9,105,218,0.1)!important}
+.ghhelper-group-win:hover{background-color:rgba(9,105,218,0.15)!important}
+.ghhelper-group-mac{border-left:4px solid #8250df!important;background-color:rgba(130,80,223,0.1)!important}
+.ghhelper-group-mac:hover{background-color:rgba(130,80,223,0.15)!important}
+.ghhelper-group-mobile{border-left:4px solid #1a7f37!important;background-color:rgba(26,127,55,0.1)!important}
+.ghhelper-group-mobile:hover{background-color:rgba(26,127,55,0.15)!important}
+.ghhelper-group-linux-deb{border-left:4px solid #bc4c00!important;background-color:rgba(188,76,0,0.1)!important}
+.ghhelper-group-linux-deb:hover{background-color:rgba(188,76,0,0.15)!important}
+.ghhelper-group-linux-rpm{border-left:4px solid #cf222e!important;background-color:rgba(207,34,46,0.1)!important}
+.ghhelper-group-linux-rpm:hover{background-color:rgba(207,34,46,0.15)!important}
+.ghhelper-group-linux-arch{border-left:4px solid #4263eb!important;background-color:rgba(66,99,235,0.1)!important}
+.ghhelper-group-linux-arch:hover{background-color:rgba(66,99,235,0.15)!important}
+.ghhelper-group-linux-appimage{border-left:4px solid #0a7b83!important;background-color:rgba(10,123,131,0.1)!important}
+.ghhelper-group-linux-appimage:hover{background-color:rgba(10,123,131,0.15)!important}
+.ghhelper-group-linux-flatpak{border-left:4px solid #bf3989!important;background-color:rgba(191,57,137,0.1)!important}
+.ghhelper-group-linux-flatpak:hover{background-color:rgba(191,57,137,0.15)!important}
+.ghhelper-group-linux-ipk{border-left:4px solid #1a7f37!important;background-color:rgba(26,127,55,0.1)!important}
+.ghhelper-group-linux-ipk:hover{background-color:rgba(26,127,55,0.15)!important}
+.ghhelper-group-linux-snap{border-left:4px solid #4263eb!important;background-color:rgba(66,99,235,0.1)!important}
+.ghhelper-group-linux-snap:hover{background-color:rgba(66,99,235,0.15)!important}
+.ghhelper-group-linux-other{border-left:4px solid #7d4e00!important;background-color:rgba(125,78,0,0.1)!important}
+.ghhelper-group-linux-other:hover{background-color:rgba(125,78,0,0.15)!important}
 .ghhelper-group-other{border-left:4px solid transparent!important}
 .ghhelper-platform-tag{background-color:transparent!important;display:inline-block;font-size:11px;padding:1px 6px;border:1px solid;border-radius:10px;margin-right:4px}
-.ghhelper-tag-windows{color:var(--color-accent-emphasis,#1f6feb)!important;border-color:var(--color-accent-emphasis,#1f6feb)!important}
-.ghhelper-tag-mac{color:var(--color-done-emphasis,#8957e5)!important;border-color:var(--color-done-emphasis,#8957e5)!important}
-.ghhelper-tag-android{color:#2da44e!important;border-color:#2da44e!important}
-.ghhelper-tag-ios{color:#6e7681!important;border-color:#6e7681!important}
-.ghhelper-tag-linux-deb{color:var(--color-severe-emphasis,#db6d28)!important;border-color:var(--color-severe-emphasis,#db6d28)!important}
-.ghhelper-tag-linux-rpm{color:var(--color-danger-emphasis,#f85149)!important;border-color:var(--color-danger-emphasis,#f85149)!important}
-.ghhelper-tag-linux-arch{color:var(--color-sponsors-emphasis,#bf4b8a)!important;border-color:var(--color-sponsors-emphasis,#bf4b8a)!important}
-.ghhelper-tag-linux-appimage{color:#20c997!important;border-color:#20c997!important}
-.ghhelper-tag-linux-flatpak{color:#0abda0!important;border-color:#0abda0!important}
-.ghhelper-tag-linux-ipk{color:#e3b341!important;border-color:#e3b341!important}
-.ghhelper-tag-linux-snap{color:#6366f1!important;border-color:#6366f1!important}
-.ghhelper-tag-linux-other{color:var(--color-attention-emphasis,#9e6a03)!important;border-color:var(--color-attention-emphasis,#9e6a03)!important}
+.ghhelper-tag-windows{color:#0969da!important;border-color:#0969da!important}
+.ghhelper-tag-mac{color:#8250df!important;border-color:#8250df!important}
+.ghhelper-tag-android{color:#1a7f37!important;border-color:#1a7f37!important}
+.ghhelper-tag-ios{color:#1a7f37!important;border-color:#1a7f37!important}
+.ghhelper-tag-linux-deb{color:#bc4c00!important;border-color:#bc4c00!important}
+.ghhelper-tag-linux-rpm{color:#cf222e!important;border-color:#cf222e!important}
+.ghhelper-tag-linux-arch{color:#4263eb!important;border-color:#4263eb!important}
+.ghhelper-tag-linux-appimage{color:#0a7b83!important;border-color:#0a7b83!important}
+.ghhelper-tag-linux-flatpak{color:#bf3989!important;border-color:#bf3989!important}
+.ghhelper-tag-linux-ipk{color:#1a7f37!important;border-color:#1a7f37!important}
+.ghhelper-tag-linux-snap{color:#4263eb!important;border-color:#4263eb!important}
+.ghhelper-tag-linux-other{color:#7d4e00!important;border-color:#7d4e00!important}
 .ghhelper-proxy-container{display:inline-flex;align-items:center;flex-shrink:0;margin-left:8px;gap:4px}
 .ghhelper-proxy-dropdown{position:relative;display:inline-flex;align-items:center}
 .ghhelper-proxy-dropdown::after{content:"";position:absolute;top:100%;left:0;right:0;height:8px;z-index:998}
