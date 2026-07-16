@@ -1623,6 +1623,158 @@
             }
         },
 
+        _renderGroups() {
+            const listEl = document.getElementById('ghhelper-proxy-list');
+            if (!listEl) return;
+            const all = StorageManager.getProxies();
+            const filtered = this._applyFilters(all);
+            const collapsed = this._getGroupsCollapsed();
+            const groupOrder = [
+                { type: 'download', label: '下载' },
+                { type: 'raw', label: 'Raw' },
+                { type: 'clone', label: 'Clone' },
+                { type: 'ssh', label: 'SSH' }
+            ];
+
+            let html = '';
+            groupOrder.forEach(g => {
+                const groupAll = all.filter(p => p.type === g.type);
+                const groupFiltered = filtered.filter(p => p.type === g.type);
+                if (groupAll.length === 0) return; // 该分组无源，不显示
+                const visibleCount = groupFiltered.length;
+                const totalCount = groupAll.length;
+                const enabledCount = groupAll.filter(p => p.enabled).length;
+                const isCollapsed = collapsed[g.type];
+                const isEmpty = visibleCount === 0;
+                const headerClass = 'ghhelper-group-header' + (isEmpty ? ' ghhelper-group-empty' : '');
+                const arrowClass = 'ghhelper-group-arrow' + (isCollapsed ? '' : ' ghhelper-group-arrow-open');
+                const bodyClass = 'ghhelper-group-body' + (isCollapsed ? ' ghhelper-group-collapsed' : '');
+
+                html += '<div class="' + headerClass + '" data-group-toggle="' + g.type + '" data-ghhelper-nt="1">';
+                html += '<span class="' + arrowClass + '" data-ghhelper-nt="1"></span>';
+                html += '<span class="ghhelper-group-title" data-ghhelper-nt="1">' + g.label + '</span>';
+                html += '<span class="ghhelper-group-count" data-ghhelper-nt="1">(' + visibleCount + '/' + totalCount + ')</span>';
+                html += '<span class="ghhelper-group-enabled" data-ghhelper-nt="1">· 启用 ' + enabledCount + '</span>';
+                html += '</div>';
+                html += '<div class="' + bodyClass + '" data-ghhelper-nt="1">';
+                if (isEmpty) {
+                    html += '<div class="ghhelper-empty-hint" data-ghhelper-nt="1">无匹配加速源</div>';
+                } else {
+                    groupFiltered.forEach(p => {
+                        html += this._renderCard(p);
+                    });
+                }
+                html += '</div>';
+            });
+
+            if (all.length === 0) {
+                html = '<div class="ghhelper-empty-hint" data-ghhelper-nt="1">暂无加速源，点「+ 添加」创建</div>';
+            }
+
+            listEl.innerHTML = html;
+
+            // 事件委托（绑定到 listEl，只绑一次）
+            if (!listEl.dataset.ghhelperDelegated) {
+                listEl.dataset.ghhelperDelegated = '1';
+                // 分组折叠
+                listEl.addEventListener('click', (e) => {
+                    const header = e.target.closest('[data-group-toggle]');
+                    if (header) {
+                        this._toggleGroup(header.dataset.groupToggle);
+                        return;
+                    }
+                    // 编辑按钮
+                    const editBtn = e.target.closest('[data-proxy-edit]');
+                    if (editBtn) {
+                        this._showEditForm(editBtn.dataset.proxyEdit);
+                        return;
+                    }
+                    // 删除按钮
+                    const delBtn = e.target.closest('[data-proxy-delete]');
+                    if (delBtn) {
+                        const id = delBtn.dataset.proxyDelete;
+                        const proxy = StorageManager.getProxies().find(p => p.id === id);
+                        const msg = proxy && proxy.builtIn
+                            ? '删除内置源后可通过"恢复默认"找回，确认？'
+                            : '确认删除此自定义加速源？';
+                        if (confirm(msg)) {
+                            ProxyManager.deleteProxy(id);
+                            this._renderChipRow();
+                            this._renderGroups();
+                            DOMRenderer.reprocessAll();
+                        }
+                        return;
+                    }
+                    // 表单内的取消按钮
+                    const cancelBtn = e.target.closest('[data-form-cancel]');
+                    if (cancelBtn) {
+                        this._renderGroups();
+                        return;
+                    }
+                    // 表单内的保存按钮
+                    const saveBtn = e.target.closest('[data-form-save]');
+                    if (saveBtn) {
+                        this._handleFormSave(saveBtn);
+                        return;
+                    }
+                });
+                // toggle 启用/禁用
+                listEl.addEventListener('change', (e) => {
+                    const toggle = e.target.closest('[data-proxy-toggle]');
+                    if (toggle) {
+                        ProxyManager.toggleProxy(toggle.dataset.proxyToggle);
+                        this._renderChipRow();
+                        this._renderGroups();
+                        DOMRenderer.reprocessAll();
+                    }
+                });
+                // 表单字段输入时清除错误提示
+                listEl.addEventListener('input', (e) => {
+                    const field = e.target.closest('[data-form-field]');
+                    if (field) {
+                        const errEl = field.parentElement.querySelector('.ghhelper-proxy-form-error');
+                        if (errEl) errEl.remove();
+                    }
+                });
+            }
+        },
+
+        _renderCard(p) {
+            const dotColor = p.enabled ? '#1a7f37' : '#6e7681';
+            const typeLabel = p.type === 'all' ? '全部' : p.type;
+            const sourceLabel = p.builtIn ? '内置' : '自定义';
+            const sourceClass = p.builtIn ? 'ghhelper-proxy-tag-builtin' : 'ghhelper-proxy-tag-custom';
+            let html = '<div class="ghhelper-proxy-card" data-proxy-id="' + this._escapeHtml(p.id) + '" data-ghhelper-nt="1">';
+            // 第一行
+            html += '<div class="ghhelper-proxy-card-row1" data-ghhelper-nt="1">';
+            html += '<span class="ghhelper-proxy-dot" data-ghhelper-nt="1" style="background-color:' + dotColor + '"></span>';
+            html += '<span class="ghhelper-proxy-name" data-ghhelper-nt="1">' + this._escapeHtml(p.name) + '</span>';
+            if (p.builtIn && p.edited) {
+                html += '<span class="ghhelper-proxy-modified" data-ghhelper-nt="1">已修改</span>';
+            }
+            html += '<div class="ghhelper-proxy-tags" data-ghhelper-nt="1">';
+            html += '<span class="ghhelper-proxy-tag" data-ghhelper-nt="1">[' + typeLabel + ']</span>';
+            html += '<span class="ghhelper-proxy-tag ' + sourceClass + '" data-ghhelper-nt="1">[' + sourceLabel + ']</span>';
+            if (p.region) {
+                html += '<span class="ghhelper-proxy-tag" data-ghhelper-nt="1">' + this._escapeHtml(p.region) + '</span>';
+            }
+            html += '</div>';
+            html += '<div class="ghhelper-proxy-actions" data-ghhelper-nt="1">';
+            html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (p.enabled ? 'checked' : '') + ' data-proxy-toggle="' + this._escapeHtml(p.id) + '"><span class="ghhelper-toggle-slider"></span></label>';
+            html += '<button class="ghhelper-btn" data-proxy-edit="' + this._escapeHtml(p.id) + '" data-ghhelper-nt="1">✎ 编辑</button>';
+            html += '<button class="ghhelper-btn ghhelper-btn-danger" data-proxy-delete="' + this._escapeHtml(p.id) + '" data-ghhelper-nt="1">🗑 删除</button>';
+            html += '</div>';
+            html += '</div>';
+            // 第二行 URL
+            html += '<div class="ghhelper-proxy-url" data-ghhelper-nt="1">' + this._escapeHtml(p.url) + '</div>';
+            // 第三行 备注
+            if (p.desc) {
+                html += '<div class="ghhelper-proxy-desc" data-ghhelper-nt="1">' + this._escapeHtml(p.desc) + '</div>';
+            }
+            html += '</div>';
+            return html;
+        },
+
         _renderProxyList() {
             const listEl = document.getElementById('ghhelper-proxy-list');
             if (!listEl) return;
