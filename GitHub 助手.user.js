@@ -30,6 +30,7 @@
 
     const STORAGE_KEYS = {
         proxies: 'ghhelper_proxies',
+        deletedBuiltinIds: 'ghhelper_deleted_builtin_ids',
         features: 'ghhelper_features',
         maxDisplay: 'ghhelper_max_display',
         selectedOS: 'ghhelper_selected_os',
