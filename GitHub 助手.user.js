@@ -1466,6 +1466,8 @@
 
     function init() {
         LOG('init 调用, 重试次数:', _initRetryCount, 'pathname:', window.location.pathname);
+        // 初始化加速源存储（首次写入种子，升级合并）
+        StorageManager.initProxies();
         DOMRenderer.injectCSS();
         DOMRenderer.injectGearButton();
 
