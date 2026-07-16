@@ -730,6 +730,9 @@
         },
 
         processReleaseBox(details) {
+            // 防御：永远不处理脚本自身创建的 wrapper details（签名/校验折叠区）
+            // 防止在 wrapper 内部再次创建嵌套 wrapper
+            if (details.hasAttribute('data-ghhelper-wrapper')) return;
             if (details.dataset.ghhelperProcessed === 'true') {
                 // 已处理过：若 details 已展开，只重渲加速按钮，不重建分组排序
                 // 分组排序的 wrapper 重建会破坏用户的展开状态，应由行数变化触发
@@ -904,11 +907,15 @@
             // 幂等清理：移除所有旧 wrapper，把内部 li 还原回真实 parent，防止重复折叠
             // 必须在收集 validRows 之后、计算 parent 之前执行，确保 parent 指向真实容器
             // 记录旧 wrapper 的 open 状态，重建时保留用户的展开状态
-            const parentForCleanup = detailsElem.querySelector('ul, .Box-body, div') || detailsElem;
+            // 注意：从 detailsElem 直接查找所有 wrapper（不限于第一个 ul/div），避免遗漏嵌套 wrapper
             let prevWrapperOpen = false;
-            parentForCleanup.querySelectorAll('[data-ghhelper-wrapper="1"]').forEach(w => {
+            detailsElem.querySelectorAll('[data-ghhelper-wrapper="1"]').forEach(w => {
                 if (w.hasAttribute('open')) prevWrapperOpen = true;
-                w.querySelectorAll('li').forEach(li => parentForCleanup.appendChild(li));
+                // 把 wrapper 内的 li 还原到 wrapper 的父节点（真实容器）
+                const wp = w.parentNode;
+                if (wp) {
+                    w.querySelectorAll('li').forEach(li => wp.appendChild(li));
+                }
                 w.remove();
             });
 
@@ -1089,7 +1096,7 @@
 
         // OS/Arch 变更时重排（不重建 wrapper）
         resortAll() {
-            const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]');
+            const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]:not([data-ghhelper-wrapper])');
             LOG('  resortAll 调用, 已处理 details 数:', targets.length);
             targets.forEach(d => {
                 if (d.open && StorageManager.isFeatureEnabled('groupAndSort')) {
@@ -1219,7 +1226,7 @@
         },
 
         reprocessAll() {
-            const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]');
+            const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]:not([data-ghhelper-wrapper])');
             LOG('  reprocessAll 调用, 已处理 details 数:', targets.length);
             targets.forEach(d => {
                 // 只重渲加速按钮（加速源变更后需要更新），不重建分组排序
@@ -2208,8 +2215,13 @@
         let assetCount = 0;
         detailsList.forEach(details => {
             // 跳过更新日志折叠区，避免误判为 Assets 容器
-            if (details.hasAttribute('data-ghhelper-notes-wrap') || details.classList.contains('ghhelper-version-section')) return;
-            const summary = details.querySelector('summary');
+            // 跳过脚本自身创建的 wrapper details（签名/校验折叠区），否则 wrapper 内的签名文件链接
+            // 会让 hasDownloadLink=true，导致 wrapper 被误识别为 Assets，在内部又创建嵌套 wrapper
+            if (details.hasAttribute('data-ghhelper-notes-wrap') ||
+                details.classList.contains('ghhelper-version-section') ||
+                details.hasAttribute('data-ghhelper-wrapper')) return;
+            // 只认 details 的直接 summary，避免取到嵌套 wrapper 的 summary
+            const summary = details.querySelector(':scope > summary');
             const hasDownloadLink = !!details.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
             const isAssetsByText = summary && /Assets|资源|资产/i.test(summary.textContent);
             if (hasDownloadLink || isAssetsByText) {
