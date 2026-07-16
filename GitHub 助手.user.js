@@ -1400,17 +1400,30 @@
         renderFeatureTab(body) {
             const features = StorageManager.getFeatures();
             const items = [
-                { key: 'groupAndSort', label: '文件分组排序', desc: '按 OS/平台分组 + 智能排序' },
-                { key: 'downloadCount', label: '显示下载量', desc: '从 GitHub API 获取下载量' },
-                { key: 'replaceTime', label: '精确时间替换', desc: '默认关闭以兼容中文化脚本' },
-                { key: 'collapsibleNotes', label: '可折叠更新日志', desc: '更新日志可手动折叠' },
-                { key: 'proxyButtons', label: '加速下载按钮', desc: '显示加速下载按钮' },
-                { key: 'scrollToTop', label: '回到顶部按钮', desc: '悬浮回到顶部按钮' }
+                { key: 'groupAndSort', icon: '📁', label: '文件分组排序', defaultVal: true, desc: '按 OS/平台分组，当前系统优先排序', impact: 'Release 文件列表顺序与色块标记' },
+                { key: 'downloadCount', icon: '📥', label: '显示下载量', defaultVal: true, desc: '从 GitHub API 获取每个文件的下载次数', impact: '文件行右侧显示下载量图标+数字' },
+                { key: 'replaceTime', icon: '🕐', label: '精确时间替换', defaultVal: false, desc: '将"3天前"替换为"2026-07-13 14:30"', impact: '关闭以兼容中文化脚本，开启后两者可能冲突' },
+                { key: 'collapsibleNotes', icon: '📖', label: '可折叠更新日志', defaultVal: true, desc: '将更新日志包进可折叠区域，多版本时支持分段折叠', impact: 'Release 标题下方显示"更新日志"折叠栏' },
+                { key: 'proxyButtons', icon: '⚡', label: '加速下载按钮', defaultVal: true, desc: '在每个 Release 文件旁显示加速下载按钮', impact: '文件行右侧显示加速源按钮+下拉菜单' },
+                { key: 'scrollToTop', icon: '↑', label: '回到顶部按钮', defaultVal: true, desc: '滚动超过 300px 后显示悬浮回到顶部按钮', impact: '页面右下角悬浮箭头按钮' }
             ];
             let html = '<div class="ghhelper-settings-section"><h4>功能开关</h4>';
             items.forEach(item => {
-                html += '<div class="ghhelper-settings-row"><div><span class="ghhelper-settings-label">' + item.label + '</span><br><span class="ghhelper-settings-desc">' + item.desc + '</span></div>';
-                html += '<label class="ghhelper-toggle"><input type="checkbox" ' + (features[item.key] ? 'checked' : '') + ' data-feature="' + item.key + '"><span class="ghhelper-toggle-slider"></span></label></div>';
+                const enabled = features[item.key] !== undefined ? features[item.key] : item.defaultVal;
+                const badgeClass = item.defaultVal ? 'Label--success' : '';
+                const badgeText = item.defaultVal ? '默认开启' : '默认关闭';
+                html += '<div class="ghhelper-feature-card" data-ghhelper-nt="1" style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--color-border-default,#30363d);border-radius:8px;margin-bottom:8px">';
+                html += '<span data-ghhelper-nt="1" style="font-size:18px;line-height:1.4">' + item.icon + '</span>';
+                html += '<div data-ghhelper-nt="1" style="flex:1;min-width:0">';
+                html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+                html += '<span data-ghhelper-nt="1" style="font-weight:600;font-size:13px">' + item.label + '</span>';
+                html += '<span data-ghhelper-nt="1" class="Label ' + badgeClass + '" style="font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid">' + badgeText + '</span>';
+                html += '</div>';
+                html += '<div data-ghhelper-nt="1" style="font-size:12px;color:var(--fgColor-default,var(--color-fg-default));margin-bottom:2px">' + item.desc + '</div>';
+                html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">影响：' + item.impact + '</div>';
+                html += '</div>';
+                html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-feature="' + item.key + '"><span class="ghhelper-toggle-slider"></span></label>';
+                html += '</div>';
             });
             html += '</div>';
             body.innerHTML = html;
@@ -1420,6 +1433,8 @@
                     const f = StorageManager.getFeatures();
                     f[this.dataset.feature] = this.checked;
                     StorageManager.setFeatures(f);
+                    // 触发重新处理
+                    DOMRenderer.reprocessAll();
                 });
             });
         },
