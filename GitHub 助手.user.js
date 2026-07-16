@@ -509,8 +509,20 @@
     };
 
     // ============================================================
-    // 5. DOM 渲染器 (DOMRenderer)
+    // 4. DOM 渲染器 (DOMRenderer)
     // ============================================================
+
+    // 模块级辅助：判断 mutation 是否仅由脚本自身元素引起（避免 observer 无限循环）
+    const isScriptMutation = (mutations) => {
+        return Array.from(mutations).every(m => {
+            const nodes = [...Array.from(m.addedNodes), ...Array.from(m.removedNodes)];
+            if (!nodes.length) return true; // 属性变化/文本变化忽略
+            return nodes.every(n => {
+                if (n.nodeType !== 1) return true; // 文本节点忽略
+                return n.hasAttribute('data-ghhelper-element') || n.closest('[data-ghhelper-element]') || n.querySelector('[data-ghhelper-element]');
+            });
+        });
+    };
 
     const DOMRenderer = {
         _scrollTopBtn: null,
@@ -759,7 +771,7 @@
                     LOG('  OS 选择器 change: ' + osSel.value);
                     StorageManager.setSelectedOS(osSel.value);
                     document.querySelectorAll('.ghhelper-os-select').forEach(s => s.value = osSel.value);
-                    this.reprocessAll();
+                    this.resortAll();
                 });
                 titleSpan.appendChild(osSel);
 
@@ -781,7 +793,7 @@
                     LOG('  架构选择器 change: ' + archSel.value);
                     StorageManager.setSelectedArch(archSel.value);
                     document.querySelectorAll('.ghhelper-arch-select').forEach(s => s.value = archSel.value);
-                    this.reprocessAll();
+                    this.resortAll();
                 });
                 titleSpan.appendChild(archSel);
             }
@@ -817,18 +829,6 @@
 
             let retryTimer = null;
             let isRefreshing = false;
-
-            // 判断一次 mutation 是否由脚本自身元素引起
-            const isScriptMutation = (mutations) => {
-                return Array.from(mutations).every(m => {
-                    const nodes = [...Array.from(m.addedNodes), ...Array.from(m.removedNodes)];
-                    if (!nodes.length) return true; // 属性变化等也忽略
-                    return nodes.every(n => {
-                        if (n.nodeType !== 1) return true;
-                        return n.hasAttribute('data-ghhelper-element') || n.closest('[data-ghhelper-element]') || n.querySelector('[data-ghhelper-element]');
-                    });
-                });
-            };
 
             const refresh = (mutations) => {
                 if (!details.open || isRefreshing) return;
@@ -887,17 +887,18 @@
                 r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],a[href*="/attestations/"]'));
             LOG('    formatAndSortUI: 有效行数=' + validRows.length + ', force=' + !!force + ', 上次计数=' + detailsElem.dataset.ghhelperVRCount);
             if (!validRows.length) return;
+
             const prev = parseInt(detailsElem.dataset.ghhelperVRCount || '0');
-            if (!force && validRows.length === prev) {
-                LOG('    formatAndSortUI: 行数未变，跳过');
-                return;
-            }
-            // 即使 force=true，如果已有 wrapper 且行数未变，也跳过重建（避免破坏用户的展开状态）
             const existingWrapper = detailsElem.querySelector('[data-ghhelper-wrapper="1"]');
-            if (existingWrapper && validRows.length === prev) {
-                LOG('    formatAndSortUI: force 模式但行数未变，跳过 wrapper 重建');
+
+            // 行数未变 + wrapper 已存在 → 增量更新（只重排和更新样式，不重建 wrapper）
+            if (validRows.length === prev && existingWrapper) {
+                LOG('    formatAndSortUI: 行数未变且 wrapper 存在，增量更新样式和排序');
+                this._updateSortAndStyle(detailsElem, validRows);
                 return;
             }
+            // 行数未变但无 wrapper（首次或异常状态）→ 全量重建
+            // 行数变化 → 全量重建
             detailsElem.dataset.ghhelperVRCount = validRows.length;
 
             // 幂等清理：移除所有旧 wrapper，把内部 li 还原回真实 parent，防止重复折叠
@@ -1010,6 +1011,91 @@
                 !c.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]') &&
                 !c.hasAttribute('data-ghhelper-wrapper') && /show all/i.test(c.textContent));
             if (sab) parent.appendChild(sab);
+        },
+
+        // 增量更新：只重排和更新样式，不重建 wrapper（保护用户的展开状态）
+        _updateSortAndStyle(detailsElem, validRows) {
+            const os = SortEngine.getActiveOS();
+            const arch = SortEngine.getActiveArch();
+            const wrapper = detailsElem.querySelector('[data-ghhelper-wrapper="1"]');
+
+            // 重新计算分组和分数
+            const nonAux = [];
+            validRows.forEach(row => {
+                const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],a[href*="/attestations/"]');
+                let gi = { id: 'other', showTag: false };
+                if (nl) {
+                    const fn = this.getFileNameFromLink(nl);
+                    const href = nl.getAttribute('href') || '';
+                    gi = href.includes('/archive/') ? { id: 'source', showTag: false }
+                        : href.includes('/attestations/') ? { id: 'meta', showTag: false }
+                        : SortEngine.parseFileGroup(fn);
+                }
+                const score = nl ? SortEngine.calculateMatchScore(this.getFileNameFromLink(nl), gi, os, arch) : -10000;
+                row._ghs = score; row._ghg = gi; row._ghn = nl;
+                // 签名/校验/meta 行不参与重排（留在 wrapper 内不动）
+                const fn = nl ? this.getFileNameFromLink(nl) : '';
+                if (gi.id === 'meta' || SortEngine.isSignatureFile(fn)) {
+                    // 签名行留在 wrapper 内，只更新样式
+                    this._styleRow(row);
+                } else {
+                    nonAux.push(row);
+                }
+            });
+
+            // 找到真实 parent（非 wrapper）
+            let parent = nonAux.length ? nonAux[0].parentNode : null;
+            if (!parent && wrapper) parent = wrapper.parentNode;
+            if (!parent) return;
+
+            // 按分数排序非签名行
+            nonAux.sort((a, b) => b._ghs - a._ghs);
+
+            // 重排：把非签名行移到 wrapper 之前（保持顺序）
+            const insertBefore = wrapper || null;
+            nonAux.forEach(row => {
+                if (row.parentNode !== parent) parent.appendChild(row);
+                else parent.insertBefore(row, insertBefore);
+                this._styleRow(row);
+            });
+        },
+
+        // 行样式更新（不重建 DOM 结构）
+        _styleRow(row) {
+            row.className = row.className.replace(/ghhelper-group-\S+/g, '');
+            row.classList.add(SortEngine.getGroupClass(row._ghg.id));
+            let mc = row.querySelector('[data-ghhelper-meta]');
+            if (!mc) {
+                mc = document.createElement('div');
+                mc.setAttribute('data-ghhelper-meta', '1');
+                mc.setAttribute('data-ghhelper-element', '1');
+                mc.setAttribute('data-ghhelper-nt', '1');
+                mc.style.cssText = 'display:inline-flex;align-items:center;flex-shrink:0;margin-left:6px;flex-wrap:wrap;gap:4px;vertical-align:middle';
+                const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],a[href*="/attestations/"]');
+                if (nl && nl.parentNode) nl.parentNode.insertBefore(mc, nl.nextSibling);
+                else row.appendChild(mc);
+            }
+            mc.querySelectorAll('[data-ghhelper-tag]').forEach(t => t.remove());
+            if (row._ghg.showTag) {
+                const tag = document.createElement('span');
+                tag.setAttribute('data-ghhelper-tag', '1');
+                tag.setAttribute('data-ghhelper-element', '1');
+                tag.setAttribute('data-ghhelper-nt', '1');
+                tag.className = 'ghhelper-platform-tag ' + SortEngine.getTagClass(row._ghg.id);
+                tag.textContent = row._ghg.name;
+                mc.appendChild(tag);
+            }
+        },
+
+        // OS/Arch 变更时重排（不重建 wrapper）
+        resortAll() {
+            const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]');
+            LOG('  resortAll 调用, 已处理 details 数:', targets.length);
+            targets.forEach(d => {
+                if (d.open && StorageManager.isFeatureEnabled('groupAndSort')) {
+                    this.formatAndSortUI(d, true);
+                }
+            });
         },
 
         injectDownloadCounts(detailsElem, assets) {
@@ -1136,13 +1222,10 @@
             const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]');
             LOG('  reprocessAll 调用, 已处理 details 数:', targets.length);
             targets.forEach(d => {
-                // 不重置 ghhelperVRCount，让 formatAndSortUI 自行判断是否需要重建
-                // 这样能避免破坏用户已展开的签名/校验 wrapper
+                // 只重渲加速按钮（加速源变更后需要更新），不重建分组排序
+                // 分组排序的 wrapper 重建会破坏用户的展开状态
                 if (d.open) {
-                    // 只重渲加速按钮（加速源变更后需要更新），不重建分组排序
                     if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(d);
-                    // 仅在分组/排序功能开启且行数确实变化时才重建（由 formatAndSortUI 内部判断）
-                    if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(d, true);
                 }
             });
         },
@@ -2180,7 +2263,9 @@
 
     function startDetailsObserver() {
         let debounceTimer = null;
-        const observer = new MutationObserver(() => {
+        const observer = new MutationObserver((mutations) => {
+            // 过滤脚本自身的 DOM 变化，避免无限循环
+            if (isScriptMutation(mutations)) return;
             if (debounceTimer) return;
             debounceTimer = setTimeout(() => {
                 debounceTimer = null;
