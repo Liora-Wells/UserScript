@@ -719,10 +719,9 @@
 
         processReleaseBox(details) {
             if (details.dataset.ghhelperProcessed === 'true') {
-                // 已处理过：若 details 已展开，强制刷新分组/着色/加速按钮
-                // 应对首次进入已展开 Release 但内容尚未加载完成、重试时被 processed 跳过的场景
+                // 已处理过：若 details 已展开，只重渲加速按钮，不重建分组排序
+                // 分组排序的 wrapper 重建会破坏用户的展开状态，应由行数变化触发
                 if (details.open) {
-                    if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details, true);
                     if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
                 }
                 return;
@@ -891,6 +890,12 @@
             const prev = parseInt(detailsElem.dataset.ghhelperVRCount || '0');
             if (!force && validRows.length === prev) {
                 LOG('    formatAndSortUI: 行数未变，跳过');
+                return;
+            }
+            // 即使 force=true，如果已有 wrapper 且行数未变，也跳过重建（避免破坏用户的展开状态）
+            const existingWrapper = detailsElem.querySelector('[data-ghhelper-wrapper="1"]');
+            if (existingWrapper && validRows.length === prev) {
+                LOG('    formatAndSortUI: force 模式但行数未变，跳过 wrapper 重建');
                 return;
             }
             detailsElem.dataset.ghhelperVRCount = validRows.length;
@@ -1131,10 +1136,13 @@
             const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]');
             LOG('  reprocessAll 调用, 已处理 details 数:', targets.length);
             targets.forEach(d => {
-                d.dataset.ghhelperVRCount = '0';
+                // 不重置 ghhelperVRCount，让 formatAndSortUI 自行判断是否需要重建
+                // 这样能避免破坏用户已展开的签名/校验 wrapper
                 if (d.open) {
-                    this.formatAndSortUI(d, true);
+                    // 只重渲加速按钮（加速源变更后需要更新），不重建分组排序
                     if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(d);
+                    // 仅在分组/排序功能开启且行数确实变化时才重建（由 formatAndSortUI 内部判断）
+                    if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(d, true);
                 }
             });
         },
@@ -1310,7 +1318,7 @@
             btn.setAttribute('data-ghhelper-element', '1');
             btn.setAttribute('data-ghhelper-nt', '1');
             btn.title = 'GitHub 助手设置';
-            btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.028-.288c.648-.175 1.306.129 1.474.77l.273 1.022c.168.643-.089 1.312-.59 1.637l-.846.54c-.054.034-.13.101-.13.241 0 .14.076.207.13.241l.846.54c.501.325.758.994.59 1.637l-.273 1.022c-.168.641-.826.945-1.474.77l-1.028-.288c-.066-.019-.176-.011-.299.071-.214.143-.437.272-.668.386-.133.066-.194.158-.212.224l-.288 1.107c-.17.645-.716 1.195-1.459 1.259a8.2 8.2 0 0 1-1.402 0c-.743-.064-1.289-.614-1.459-1.259l-.288-1.107c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.028.288c-.648.175-1.306-.129-1.474-.77l-.273-1.022c-.168-.643.089-1.312.59-1.637l.846-.54c.054-.034.13-.101.13-.241 0-.14-.076-.207-.13-.241l-.846-.54c-.501-.325-.758-.994-.59-1.637l.273-1.022c.168-.641.826-.945 1.474-.77l1.028.288c.066.019.176.011.299-.071.231-.114.454-.243.668-.386.133-.066.194-.158.212-.224l.288-1.107C7.01.645 7.556.095 8.299.031 8.2 8.2 0 0 1 .701.031 8 8 8zM5.5 8a2.5 2.5 0 1 0 5 0 2.5 2.5 0 0 0-5 0z"/></svg>';
+            btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8.2 8.2 0 0 1 .701.031C9.444.095 9.99.645 10.16 1.29l.288 1.107c.018.066.079.158.212.224.231.114.454.243.668.386.123.082.233.09.299.071l1.028-.288c.648-.175 1.306.129 1.474.77l.273 1.022c.168.643-.089 1.312-.59 1.637l-.846.54c-.054.034-.13.101-.13.241 0 .14.076.207.13.241l.846.54c.501.325.758.994.59 1.637l-.273 1.022c-.168.641-.826.945-1.474.77l-1.028-.288c-.066-.019-.176-.011-.299.071-.214.143-.437.272-.668.386-.133.066-.194.158-.212.224l-.288 1.107c-.17.645-.716 1.195-1.459 1.259a8.2 8.2 0 0 1-1.402 0c-.743-.064-1.289-.614-1.459-1.259l-.288-1.107c-.018-.066-.079-.158-.212-.224a5.738 5.738 0 0 1-.668-.386c-.123-.082-.233-.09-.299-.071l-1.028.288c-.648.175-1.306-.129-1.474-.77l-.273-1.022c-.168-.643.089-1.312.59-1.637l.846-.54c.054-.034.13-.101.13-.241 0-.14-.076-.207-.13-.241l-.846-.54c-.501-.325-.758-.994-.59-1.637l.273-1.022c.168-.641.826-.945 1.474-.77l1.028.288c.066.019.176.011.299-.071.231-.114.454-.243.668-.386.133-.066.194-.158.212-.224l.288-1.107C7.01.645 7.556.095 8.299.031A8.2 8.2 0 0 1 8 0zM5.5 8a2.5 2.5 0 1 0 5 0 2.5 2.5 0 0 0-5 0z"/></svg>';
             btn.addEventListener('click', () => SettingsPanel.show());
             document.body.appendChild(btn);
         }
