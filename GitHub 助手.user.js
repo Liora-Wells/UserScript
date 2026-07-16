@@ -1568,6 +1568,61 @@
             });
         },
 
+        _renderChipRow() {
+            const chipRowEl = document.getElementById('ghhelper-chip-row');
+            if (!chipRowEl) return;
+            const all = StorageManager.getProxies();
+            const counts = this._computeChipCounts(all);
+            const state = this._getFilterState();
+
+            const chip = (key, dim, label, value, count, active) => {
+                const cls = 'ghhelper-chip' + (active ? ' ghhelper-chip-active' : '');
+                return '<span class="' + cls + '" data-chip-dim="' + dim + '" data-chip-key="' + key + '" data-ghhelper-nt="1">' + label + ' <span class="ghhelper-chip-count">' + count + '</span></span>';
+            };
+
+            let html = '<div class="ghhelper-chip-group" data-ghhelper-nt="1">';
+            // 类型维度
+            html += chip('all', 'type', '全部', 'all', counts.type.all, state.type === 'all');
+            html += chip('download', 'type', '下载', 'download', counts.type.download, state.type === 'download');
+            html += chip('raw', 'type', 'Raw', 'raw', counts.type.raw, state.type === 'raw');
+            html += chip('clone', 'type', 'Clone', 'clone', counts.type.clone, state.type === 'clone');
+            html += chip('ssh', 'type', 'SSH', 'ssh', counts.type.ssh, state.type === 'ssh');
+            html += '<span class="ghhelper-chip-separator" data-ghhelper-nt="1"></span>';
+            // 来源维度
+            html += chip('all', 'source', '全部', 'all', counts.source.all, state.source === 'all');
+            html += chip('builtin', 'source', '内置', 'builtin', counts.source.builtin, state.source === 'builtin');
+            html += chip('custom', 'source', '自定义', 'custom', counts.source.custom, state.source === 'custom');
+            html += '<span class="ghhelper-chip-separator" data-ghhelper-nt="1"></span>';
+            // 状态维度
+            html += chip('all', 'status', '全部', 'all', counts.status.all, state.status === 'all');
+            html += chip('enabled', 'status', '启用', 'enabled', counts.status.enabled, state.status === 'enabled');
+            html += chip('disabled', 'status', '禁用', 'disabled', counts.status.disabled, state.status === 'disabled');
+            html += '<span class="ghhelper-chip-separator" data-ghhelper-nt="1"></span>';
+            // 修改维度
+            html += chip('modified', 'modified', '已修改', 'modified', counts.modified, state.modified);
+            html += '</div>';
+
+            chipRowEl.innerHTML = html;
+
+            // 事件委托（只绑一次）
+            if (!chipRowEl.dataset.ghhelperDelegated) {
+                chipRowEl.dataset.ghhelperDelegated = '1';
+                chipRowEl.addEventListener('click', (e) => {
+                    const chipEl = e.target.closest('.ghhelper-chip');
+                    if (!chipEl) return;
+                    const dim = chipEl.dataset.chipDim;
+                    const key = chipEl.dataset.chipKey;
+                    if (dim === 'modified') {
+                        // toggle
+                        this._setFilter('modified', !this._getFilterState().modified);
+                    } else {
+                        // 同维度单选
+                        this._setFilter(dim, key);
+                    }
+                });
+            }
+        },
+
         _renderProxyList() {
             const listEl = document.getElementById('ghhelper-proxy-list');
             if (!listEl) return;
