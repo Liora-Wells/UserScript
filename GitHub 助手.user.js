@@ -1095,6 +1095,9 @@
         },
 
         processReleaseNotes() {
+            // HTML 转义辅助，避免 innerHTML 拼接时被解析为标签
+            const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
             document.querySelectorAll('.markdown-body.tmp-my-3:not([data-ghhelper-notes-processed])').forEach(el => {
                 el.setAttribute('data-ghhelper-notes-processed', '1');
 
@@ -1102,9 +1105,10 @@
                 const m = window.location.pathname.match(/\/releases\/tag\/([^/?]+)/);
                 const version = m ? decodeURIComponent(m[1]) : '';
 
-                // 提取日期
+                // 提取日期（限定到 release 容器内，避免匹配页面其他 time 元素）
                 let dateStr = '';
-                const timeEl = document.querySelector('relative-time, time[datetime]');
+                const releaseCard = el.closest('[data-test-selector="release-card"]') || el.closest('.release') || el.closest('.Box');
+                const timeEl = releaseCard ? releaseCard.querySelector('relative-time, time[datetime]') : null;
                 if (timeEl) {
                     const dt = timeEl.getAttribute('datetime');
                     if (dt) {
@@ -1134,7 +1138,7 @@
                 summary.innerHTML = '<span class="ghhelper-notes-arrow"></span>' +
                     '<span class="ghhelper-notes-icon">📖</span>' +
                     '<span class="ghhelper-notes-title">更新日志</span>' +
-                    (version ? '<span class="ghhelper-notes-version">' + version + '</span>' : '') +
+                    (version ? '<span class="ghhelper-notes-version">' + escapeHtml(version) + '</span>' : '') +
                     (dateStr ? '<span class="ghhelper-notes-date">' + dateStr + '</span>' : '');
                 wrap.appendChild(summary);
 
@@ -1157,7 +1161,7 @@
                             currentSection.setAttribute('open', 'open');
                             const s = document.createElement('summary');
                             s.setAttribute('data-ghhelper-nt', '1');
-                            s.innerHTML = '<span>📌 ' + (node.textContent || '').trim() + '</span>' +
+                            s.innerHTML = '<span>📌 ' + escapeHtml((node.textContent || '').trim()) + '</span>' +
                                 '<span class="ghhelper-version-line"></span>' +
                                 '<span class="ghhelper-version-toggle">收起 ▲</span>';
                             currentSection.appendChild(s);
@@ -1531,6 +1535,8 @@
         LOG('  发现 details 元素:', detailsList.length, '个');
         let assetCount = 0;
         detailsList.forEach(details => {
+            // 跳过更新日志折叠区，避免误判为 Assets 容器
+            if (details.hasAttribute('data-ghhelper-notes-wrap') || details.classList.contains('ghhelper-version-section')) return;
             const summary = details.querySelector('summary');
             const hasDownloadLink = !!details.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
             const isAssetsByText = summary && /Assets|资源|资产/i.test(summary.textContent);
