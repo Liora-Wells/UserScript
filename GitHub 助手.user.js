@@ -1343,6 +1343,102 @@
             this._renderGroups();
         },
 
+        _getDefaultFilterState() {
+            return {
+                keyword: '',
+                type: 'all',        // 'all' | 'download' | 'raw' | 'clone' | 'ssh'
+                source: 'all',      // 'all' | 'builtin' | 'custom'
+                status: 'all',      // 'all' | 'enabled' | 'disabled'
+                modified: false     // true 时只显示 edited && builtIn 的源
+            };
+        },
+
+        _getFilterState() {
+            if (!this._filterState) this._filterState = this._getDefaultFilterState();
+            return this._filterState;
+        },
+
+        _setFilter(key, value) {
+            const state = this._getFilterState();
+            state[key] = value;
+            // 只重渲 Chip 行与分组区块，不重建整个 Tab
+            this._renderChipRow();
+            this._renderGroups();
+        },
+
+        _applyFilters(all) {
+            const state = this._getFilterState();
+            const kw = state.keyword.trim().toLowerCase();
+            return all.filter(p => {
+                // 关键词：名称/URL/地区/备注 任一包含
+                if (kw) {
+                    const haystack = [
+                        p.name || '', p.url || '', p.region || '', p.desc || ''
+                    ].join(' ').toLowerCase();
+                    if (!haystack.includes(kw)) return false;
+                }
+                // 类型
+                if (state.type !== 'all' && p.type !== state.type) return false;
+                // 来源
+                if (state.source === 'builtin' && !p.builtIn) return false;
+                if (state.source === 'custom' && p.builtIn) return false;
+                // 状态
+                if (state.status === 'enabled' && !p.enabled) return false;
+                if (state.status === 'disabled' && p.enabled) return false;
+                // 已修改
+                if (state.modified && !(p.builtIn && p.edited)) return false;
+                return true;
+            });
+        },
+
+        _computeChipCounts(all) {
+            // 计算各 Chip 在"当前搜索关键词 + 其他维度筛选"下的计数
+            // 实现方式：固定当前其他维度，切换当前维度算 count
+            const state = this._getFilterState();
+            const kw = state.keyword.trim().toLowerCase();
+            const baseFiltered = all.filter(p => {
+                if (kw) {
+                    const haystack = [
+                        p.name || '', p.url || '', p.region || '', p.desc || ''
+                    ].join(' ').toLowerCase();
+                    if (!haystack.includes(kw)) return false;
+                }
+                return true;
+            });
+            const countWith = (overrides) => {
+                const s = Object.assign({}, state, overrides);
+                return baseFiltered.filter(p => {
+                    if (s.type !== 'all' && p.type !== s.type) return false;
+                    if (s.source === 'builtin' && !p.builtIn) return false;
+                    if (s.source === 'custom' && p.builtIn) return false;
+                    if (s.status === 'enabled' && !p.enabled) return false;
+                    if (s.status === 'disabled' && p.enabled) return false;
+                    if (s.modified && !(p.builtIn && p.edited)) return false;
+                    return true;
+                }).length;
+            };
+            return {
+                type: {
+                    all: countWith({ type: 'all' }),
+                    download: countWith({ type: 'download' }),
+                    raw: countWith({ type: 'raw' }),
+                    clone: countWith({ type: 'clone' }),
+                    ssh: countWith({ type: 'ssh' })
+                },
+                source: {
+                    all: countWith({ source: 'all' }),
+                    builtin: countWith({ source: 'builtin' }),
+                    custom: countWith({ source: 'custom' })
+                },
+                status: {
+                    all: countWith({ status: 'all' }),
+                    enabled: countWith({ status: 'enabled' }),
+                    disabled: countWith({ status: 'disabled' })
+                },
+                modified: countWith({ modified: true })
+            };
+        },
+
         _escapeHtml(s) {
             return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         },
