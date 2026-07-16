@@ -1266,30 +1266,26 @@
 
         // Clone 加速：在 Code 下拉菜单的 HTTPS clone input 下方插入加速源 input
         // 样式参考 docs/Github 增强 - 高速下载.js：克隆原 input，堆叠显示
+        // 关键：不修改原 input 的 value，避免切换协议时污染
         processCloneButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            const html = target.querySelector('input[value^="https://"]:not([data-ghhelper-clone-processed])');
+            // 跳过已处理的 input（避免重复处理）
+            const html = target.querySelector('input[value^="https://"][value*="github.com"]:not([data-ghhelper-clone-processed])');
             if (!html) return;
-            // 必须是 github URL（避免误匹配其他 input）
-            if (!html.value.includes('github.com')) return;
-            html.setAttribute('data-ghhelper-clone-processed', '1');
+            // 必须是 Clone URL（通常是 input-monospace 或类似样式）
+            if (!this._isCloneInput(html)) return;
 
-            // 隐藏原 input 右侧的复制按钮（clipboard-copy），避免与点击复制冲突
-            if (html.nextElementSibling) {
-                html.nextElementSibling.style.display = 'none';
-            }
-            // 原 input value 加 git clone 前缀
-            html.value = 'git clone ' + html.value;
+            // 先清理所有旧加速源和旧标记（切换协议时清理上一个协议的残留）
+            this._cleanupCloneSSH(target);
+            // 然后标记当前 input（在清理之后，避免被清理掉）
+            html.setAttribute('data-ghhelper-clone-processed', '1');
 
             const disp = ProxyManager.getDisplayProxies('clone');
             const all = [...disp.pinned, ...disp.overflow];
-            // 清理旧元素
-            target.querySelectorAll('.ghhelper-clone-row').forEach(e => e.remove());
             if (!all.length) return;
 
             const host = window.location.host;
-            // 用原始 value（去除 git clone 前缀）拆分，得到仓库路径
-            const rawValue = html.value.replace(/^git clone /, '');
+            const rawValue = html.value;
             const splitVal = rawValue.split(host);
             if (splitVal.length < 2) return;
             const href_split = splitVal[1]; // 形如 /owner/repo.git
@@ -1303,12 +1299,13 @@
             // 克隆原 input，保留所有样式
             all.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'clone');
-                const inputClone = html.cloneNode(false); // 不克隆子节点（input 无子节点）
+                const inputClone = html.cloneNode(false);
                 inputClone.removeAttribute('data-ghhelper-clone-processed');
                 inputClone.setAttribute('data-ghhelper-nt', '1');
                 inputClone.value = 'git clone ' + url;
                 inputClone.title = url + '\n\n点击文字可直接复制';
                 inputClone.style.cursor = 'pointer';
+                inputClone.readOnly = true;
 
                 // 点击自动复制
                 inputClone.addEventListener('click', () => {
@@ -1343,25 +1340,20 @@
         // SSH 加速：在 Code 下拉菜单的 SSH clone input 下方插入加速源 input
         processSSHButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            const html = target.querySelector('input[value^="git@"]:not([data-ghhelper-ssh-processed])');
+            const html = target.querySelector('input[value^="git@"][value*="github.com"]:not([data-ghhelper-ssh-processed])');
             if (!html) return;
-            if (!html.value.includes('github.com')) return;
-            html.setAttribute('data-ghhelper-ssh-processed', '1');
+            if (!this._isCloneInput(html)) return;
 
-            // 隐藏原 input 右侧的复制按钮
-            if (html.nextElementSibling) {
-                html.nextElementSibling.style.display = 'none';
-            }
-            // 原 input value 加 git clone 前缀
-            html.value = 'git clone ' + html.value;
+            // 先清理所有旧加速源和旧标记
+            this._cleanupCloneSSH(target);
+            // 然后标记当前 input
+            html.setAttribute('data-ghhelper-ssh-processed', '1');
 
             const disp = ProxyManager.getDisplayProxies('ssh');
             const all = [...disp.pinned, ...disp.overflow];
-            target.querySelectorAll('.ghhelper-ssh-row').forEach(e => e.remove());
             if (!all.length) return;
 
-            // 用原始 value（去除 git clone 前缀）拆分
-            const rawValue = html.value.replace(/^git clone /, '');
+            const rawValue = html.value;
             const splitVal = rawValue.split(':');
             if (splitVal.length < 2) return;
             const href_split = splitVal[1]; // 形如 owner/repo.git
@@ -1379,6 +1371,7 @@
                 inputClone.value = 'git clone ' + url;
                 inputClone.title = url + '\n\n点击文字可直接复制';
                 inputClone.style.cursor = 'pointer';
+                inputClone.readOnly = true;
 
                 inputClone.addEventListener('click', () => {
                     try { GM_setClipboard(inputClone.value); } catch (e) {}
@@ -1407,18 +1400,39 @@
             LOG('  processSSHButtons: 已添加 ' + all.length + ' 个 SSH 加速源');
         },
 
+        // 判断 input 是否为 Clone URL 输入框（避免误匹配搜索框等）
+        _isCloneInput(inp) {
+            // Clone URL input 通常有 input-monospace 或 aria-label 包含 clone/copy
+            const cls = inp.className || '';
+            const label = inp.getAttribute('aria-label') || '';
+            if (/input-monospace/i.test(cls)) return true;
+            if (/clone|copy|repository/i.test(label)) return true;
+            // 兜底：value 是 .git 结尾的 URL
+            if (/\.git$/.test(inp.value)) return true;
+            return false;
+        },
+
+        // 清理所有 Clone/SSH 加速源行和旧 input 的处理标记
+        // 切换协议时 GitHub 会更新 input value，需要清理标记以便重新处理
+        _cleanupCloneSSH(target) {
+            target.querySelectorAll('.ghhelper-clone-row, .ghhelper-ssh-row').forEach(e => e.remove());
+            target.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
+            target.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
+        },
+
         // 修复下拉菜单 overflow/max-height，避免加速源被截断
         _fixMenuOverflow(elem) {
             let node = elem;
             let depth = 0;
-            while (node && node !== document.body && depth < 8) {
-                const style = window.getComputedStyle(node);
-                if (style.overflow === 'hidden' || style.overflow === 'auto' || style.overflowY === 'auto' || style.overflowY === 'hidden') {
-                    node.style.overflow = 'visible';
-                    node.style.overflowY = 'visible';
-                }
-                if (style.maxHeight && style.maxHeight !== 'none') {
-                    node.style.maxHeight = 'none';
+            while (node && node !== document.body && depth < 10) {
+                // 强制设置 overflow 和 height，使用 !important 确保覆盖 GitHub 的内联样式
+                node.style.setProperty('overflow', 'visible', 'important');
+                node.style.setProperty('overflow-y', 'visible', 'important');
+                node.style.setProperty('max-height', 'none', 'important');
+                // 如果是下拉菜单容器，也清除 height 限制
+                const cs = window.getComputedStyle(node);
+                if (cs.height !== 'auto' && cs.height !== '0px' && depth < 4) {
+                    node.style.setProperty('height', 'auto', 'important');
                 }
                 node = node.parentElement;
                 depth++;
@@ -1433,9 +1447,10 @@
                 btn.dataset.ghhelperRawCount = '0';
             });
             this.processRawButtons();
-            // Clone/SSH：清理标记，等待下次打开下拉菜单时重新处理
-            document.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
-            document.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
+            // Clone/SSH：清理加速源行和标记，等待下次打开下拉菜单时重新处理
+            document.querySelectorAll('#__primerPortalRoot__').forEach(portal => {
+                this._cleanupCloneSSH(portal);
+            });
         },
 
         reprocessAll() {
