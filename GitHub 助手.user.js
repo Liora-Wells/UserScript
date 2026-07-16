@@ -122,6 +122,7 @@
             return features[featureKey] !== undefined ? features[featureKey] : DEFAULT_FEATURES[featureKey];
         },
 
+        // 统一列表（内置+自定义），从 storage 读取
         getProxies() {
             return this.get(STORAGE_KEYS.proxies, []);
         },
@@ -130,8 +131,17 @@
             this.set(STORAGE_KEYS.proxies, proxies);
         },
 
+        // 被删除的内置源 id 列表
+        getDeletedBuiltinIds() {
+            return this.get(STORAGE_KEYS.deletedBuiltinIds, []);
+        },
+
+        setDeletedBuiltinIds(ids) {
+            this.set(STORAGE_KEYS.deletedBuiltinIds, ids);
+        },
+
         getAllProxies() {
-            return [...BUILTIN_PROXIES, ...this.getProxies()];
+            return this.getProxies();
         },
 
         getMaxDisplay() {
@@ -156,6 +166,46 @@
 
         setSelectedArch(arch) {
             this.set(STORAGE_KEYS.selectedArch, arch);
+        },
+
+        // 首次安装写入种子；升级时合并新增内置源
+        initProxies() {
+            const existing = this.getProxies();
+            if (!existing || !existing.length) {
+                LOG('StorageManager.initProxies: storage 为空，写入内置源种子');
+                this.setProxies(BUILTIN_PROXIES.map(p => Object.assign({}, p, { edited: false })));
+                return;
+            }
+            LOG('StorageManager.initProxies: storage 已有 ' + existing.length + ' 条，执行升级合并');
+            this.mergeBuiltinUpgrades(existing);
+        },
+
+        mergeBuiltinUpgrades(current) {
+            try {
+                const deleted = this.getDeletedBuiltinIds();
+                const existingIds = new Set(current.map(p => p.id));
+                let added = 0, updated = 0;
+                BUILTIN_PROXIES.forEach(builtin => {
+                    if (existingIds.has(builtin.id)) {
+                        // 已存在：若未编辑则用常量覆盖（保留 enabled 状态）
+                        const idx = current.findIndex(p => p.id === builtin.id);
+                        if (!current[idx].edited) {
+                            current[idx] = Object.assign({}, builtin, { edited: false, enabled: current[idx].enabled });
+                            updated++;
+                        }
+                    } else if (!deleted.includes(builtin.id)) {
+                        // 新内置源，用户未删除过，追加
+                        current.push(Object.assign({}, builtin, { edited: false }));
+                        added++;
+                    }
+                });
+                if (added || updated) {
+                    this.setProxies(current);
+                    LOG('StorageManager.mergeBuiltinUpgrades: 新增 ' + added + ' 条, 更新 ' + updated + ' 条');
+                }
+            } catch (e) {
+                ERR('StorageManager.mergeBuiltinUpgrades 异常:', e);
+            }
         }
     };
 
