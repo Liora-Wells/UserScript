@@ -1584,7 +1584,7 @@
     <li><strong>文件分组排序</strong>：将 Release 文件按平台分组，并根据当前系统/架构智能排序</li>
     <li><strong>显示下载量</strong>：点击按钮获取每个文件的下载量</li>
     <li><strong>精确时间替换</strong>：将相对时间替换为精确时间（默认关闭）</li>
-    <li><strong>可折叠更新日志</strong>：可手动折叠/展开 Release 更新日志</li>
+    <li><strong>可折叠更新日志</strong>：将更新日志包进可折叠区域，多版本时支持分段折叠（默认开启）</li>
     <li><strong>加速下载按钮</strong>：在每个 Release 文件旁显示加速下载按钮</li>
     <li><strong>回到顶部按钮</strong>：滚动超过 300px 后显示</li>
   </ul>
@@ -1592,7 +1592,7 @@
 <div class="ghhelper-settings-section">
   <h4>加速源</h4>
   <p style="font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted))">
-    自定义加速源优先显示，内置加速源作为补充。每个文件最多显示 maxDisplayCount 个按钮，超出部分放入"加速 ▼"下拉菜单。
+    所有加速源（内置+自定义）统一管理，支持编辑/删除/启用/禁用。内置源删除后可通过"恢复默认"找回。自定义源优先显示，内置源补齐到最大显示数量，超出部分放入"加速 ▼"下拉菜单。
   </p>
 </div>
 <div class="ghhelper-settings-section">
