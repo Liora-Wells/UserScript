@@ -678,7 +678,12 @@
 
         processReleaseBox(details) {
             if (details.dataset.ghhelperProcessed === 'true') {
-                LOG('  processReleaseBox 跳过: 已处理过');
+                // 已处理过：若 details 已展开，强制刷新分组/着色/加速按钮
+                // 应对首次进入已展开 Release 但内容尚未加载完成、重试时被 processed 跳过的场景
+                if (details.open) {
+                    if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details, true);
+                    if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
+                }
                 return;
             }
 
@@ -821,6 +826,13 @@
             });
             observer.observe(details, { childList: true, subtree: true });
             LOG('  details MutationObserver 已绑定');
+
+            // 若 details 已展开，立即执行一次 refresh
+            // 否则首次进入已展开的 Release 时，需等 toggle/mutation 才会触发分组与着色
+            if (details.open) {
+                LOG('  details 已展开，立即执行首次 refresh');
+                refresh(null);
+            }
         },
 
         formatAndSortUI(detailsElem, force) {
@@ -1401,24 +1413,28 @@
             }
             listEl.innerHTML = html;
 
-            // 绑定事件
-            listEl.querySelectorAll('input[data-proxy-toggle]').forEach(cb => {
-                cb.addEventListener('change', function () {
-                    ProxyManager.toggleProxy(this.dataset.proxyToggle);
+            // 使用事件委托绑定事件，避免 DOM 重建或中文化插件遍历时事件丢失
+            // 仅绑定一次（listEl 自身不会被 innerHTML 替换）
+            if (!listEl.dataset.ghhelperDelegated) {
+                listEl.dataset.ghhelperDelegated = '1';
+                listEl.addEventListener('change', function (e) {
+                    const cb = e.target.closest('input[data-proxy-toggle]');
+                    if (!cb) return;
+                    ProxyManager.toggleProxy(cb.dataset.proxyToggle);
                     DOMRenderer.reprocessAll();
                     // 仅刷新列表与计数，保留筛选器状态
                     SettingsPanel._renderProxyList();
                     SettingsPanel._refreshProxyCount();
                 });
-            });
-            listEl.querySelectorAll('[data-proxy-edit]').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    SettingsPanel.showEditProxyForm(document.getElementById('ghhelper-body'), this.dataset.proxyEdit);
-                });
-            });
-            listEl.querySelectorAll('[data-proxy-delete]').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const id = this.dataset.proxyDelete;
+                listEl.addEventListener('click', function (e) {
+                    const editBtn = e.target.closest('[data-proxy-edit]');
+                    if (editBtn) {
+                        SettingsPanel.showEditProxyForm(document.getElementById('ghhelper-body'), editBtn.dataset.proxyEdit);
+                        return;
+                    }
+                    const delBtn = e.target.closest('[data-proxy-delete]');
+                    if (!delBtn) return;
+                    const id = delBtn.dataset.proxyDelete;
                     const proxy = StorageManager.getProxies().find(p => p.id === id);
                     const msg = proxy && proxy.builtIn
                         ? '删除内置源后可通过"恢复默认"找回，确认？'
@@ -1430,7 +1446,7 @@
                         DOMRenderer.reprocessAll();
                     }
                 });
-            });
+            }
         },
 
         _refreshProxyCount() {
