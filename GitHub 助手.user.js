@@ -854,7 +854,9 @@
                 }
             };
 
-            details.addEventListener('toggle', () => {
+            details.addEventListener('toggle', (e) => {
+                // 只处理外层 details 自身的 toggle，忽略内层（签名/校验 wrapper）冒泡
+                if (e.target !== details) return;
                 LOG('  toggle 事件触发, details.open=' + details.open);
                 if (details.open) refresh(null);
             });
@@ -862,6 +864,11 @@
             // GitHub 的 Assets 内容是动态加载的，需要监听子树变化
             const observer = new MutationObserver((mutations) => {
                 if (isRefreshing) return;
+                // 跳过仅涉及脚本自身元素的变化（如签名/校验 wrapper 的展开/折叠）
+                if (isScriptMutation(mutations)) {
+                    LOG('  MutationObserver 跳过: 仅脚本自身元素变化');
+                    return;
+                }
                 LOG('  details MutationObserver 触发, open=' + details.open + ', mutations=' + mutations.length);
                 if (details.open) refresh(mutations);
             });
@@ -890,8 +897,11 @@
 
             // 幂等清理：移除所有旧 wrapper，把内部 li 还原回真实 parent，防止重复折叠
             // 必须在收集 validRows 之后、计算 parent 之前执行，确保 parent 指向真实容器
+            // 记录旧 wrapper 的 open 状态，重建时保留用户的展开状态
             const parentForCleanup = detailsElem.querySelector('ul, .Box-body, div') || detailsElem;
+            let prevWrapperOpen = false;
             parentForCleanup.querySelectorAll('[data-ghhelper-wrapper="1"]').forEach(w => {
+                if (w.hasAttribute('open')) prevWrapperOpen = true;
                 w.querySelectorAll('li').forEach(li => parentForCleanup.appendChild(li));
                 w.remove();
             });
@@ -982,6 +992,8 @@
                 w.setAttribute('data-ghhelper-element', '1');
                 w.setAttribute('data-ghhelper-nt', '1');
                 w.className = 'ghhelper-meta-wrapper';
+                // 保留旧 wrapper 的展开状态，避免重建后折叠
+                if (prevWrapperOpen) w.setAttribute('open', 'open');
                 const s = document.createElement('summary');
                 s.textContent = '签名 / 校验 (' + allAux.length + ')';
                 w.appendChild(s);
