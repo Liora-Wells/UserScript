@@ -1269,15 +1269,15 @@
         // 关键：不修改原 input 的 value，避免切换协议时污染
         processCloneButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            // 跳过已处理的 input（避免重复处理）
+            // 查找 HTTPS Clone URL input（未处理过的）
             const html = target.querySelector('input[value^="https://"][value*="github.com"]:not([data-ghhelper-clone-processed])');
             if (!html) return;
             // 必须是 Clone URL（通常是 input-monospace 或类似样式）
             if (!this._isCloneInput(html)) return;
 
-            // 先清理所有旧加速源和旧标记（切换协议时清理上一个协议的残留）
-            this._cleanupCloneSSH(target);
-            // 然后标记当前 input（在清理之后，避免被清理掉）
+            // 先清理旧的 Clone 加速源（保留 SSH 的，因为可能在不同 tab 下）
+            this._clearCloneRows();
+            // 标记当前 input 为已处理
             html.setAttribute('data-ghhelper-clone-processed', '1');
 
             const disp = ProxyManager.getDisplayProxies('clone');
@@ -1288,31 +1288,38 @@
             const rawValue = html.value;
             const splitVal = rawValue.split(host);
             if (splitVal.length < 2) return;
-            const href_split = splitVal[1]; // 形如 /owner/repo.git
+            const href_split = splitVal[1];
 
             const wrapperEl = html.parentElement;
             if (!wrapperEl) return;
 
-            // 修复下拉菜单 overflow/max-height，避免加速源被截断
+            // 修复下拉菜单 overflow/max-height
             this._fixMenuOverflow(wrapperEl);
 
-            // 克隆原 input，保留所有样式
+            // 隐藏右侧复制按钮（点击 input 即可复制）
+            const copyBtn = html.nextElementSibling;
+            if (copyBtn) copyBtn.style.display = 'none';
+
+            // 添加提示文字
+            const hint = wrapperEl.nextElementSibling;
+            if (hint && hint.tagName === 'P' && !hint.dataset.ghhelperHintAdded) {
+                hint.dataset.ghhelperHintAdded = '1';
+                hint.textContent += ' (点击文字可直接复制)';
+            }
+
+            // 克隆原 input，生成加速源行
             all.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'clone');
                 const inputClone = html.cloneNode(false);
                 inputClone.removeAttribute('data-ghhelper-clone-processed');
                 inputClone.setAttribute('data-ghhelper-nt', '1');
+                inputClone.setAttribute('data-ghhelper-element', '1');
                 inputClone.value = 'git clone ' + url;
                 inputClone.title = url + '\n\n点击文字可直接复制';
                 inputClone.style.cursor = 'pointer';
                 inputClone.readOnly = true;
 
-                // 点击自动复制
-                inputClone.addEventListener('click', () => {
-                    try { GM_setClipboard(inputClone.value); } catch (e) {}
-                });
-
-                // 创建包装 div，继承原父元素的 className（保持布局一致）
+                // 创建包装 div，继承原父元素的 className
                 const row = document.createElement('div');
                 row.className = 'ghhelper-clone-row ' + wrapperEl.className;
                 row.setAttribute('data-ghhelper-element', '1');
@@ -1344,9 +1351,9 @@
             if (!html) return;
             if (!this._isCloneInput(html)) return;
 
-            // 先清理所有旧加速源和旧标记
-            this._cleanupCloneSSH(target);
-            // 然后标记当前 input
+            // 先清理旧的 SSH 加速源（保留 Clone 的，因为可能在不同 tab 下）
+            this._clearSshRows();
+            // 标记当前 input 为已处理
             html.setAttribute('data-ghhelper-ssh-processed', '1');
 
             const disp = ProxyManager.getDisplayProxies('ssh');
@@ -1356,26 +1363,36 @@
             const rawValue = html.value;
             const splitVal = rawValue.split(':');
             if (splitVal.length < 2) return;
-            const href_split = splitVal[1]; // 形如 owner/repo.git
+            const href_split = splitVal[1];
 
             const wrapperEl = html.parentElement;
             if (!wrapperEl) return;
 
+            // 修复下拉菜单 overflow/max-height
             this._fixMenuOverflow(wrapperEl);
 
+            // 隐藏右侧复制按钮
+            const copyBtn = html.nextElementSibling;
+            if (copyBtn) copyBtn.style.display = 'none';
+
+            // 添加提示文字
+            const hint = wrapperEl.nextElementSibling;
+            if (hint && hint.tagName === 'P' && !hint.dataset.ghhelperSshHintAdded) {
+                hint.dataset.ghhelperSshHintAdded = '1';
+                hint.textContent += ' (点击文字可直接复制)';
+            }
+
+            // 克隆原 input，生成加速源行
             all.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'ssh');
                 const inputClone = html.cloneNode(false);
                 inputClone.removeAttribute('data-ghhelper-ssh-processed');
                 inputClone.setAttribute('data-ghhelper-nt', '1');
+                inputClone.setAttribute('data-ghhelper-element', '1');
                 inputClone.value = 'git clone ' + url;
                 inputClone.title = url + '\n\n点击文字可直接复制';
                 inputClone.style.cursor = 'pointer';
                 inputClone.readOnly = true;
-
-                inputClone.addEventListener('click', () => {
-                    try { GM_setClipboard(inputClone.value); } catch (e) {}
-                });
 
                 const row = document.createElement('div');
                 row.className = 'ghhelper-ssh-row ' + wrapperEl.className;
@@ -1387,6 +1404,7 @@
                 wrapperEl.insertAdjacentElement('afterend', row);
             });
 
+            // 给祖先容器添加点击委托
             const grandparent = wrapperEl.parentElement;
             if (grandparent && !grandparent.dataset.ghhelperSshClickBound) {
                 grandparent.dataset.ghhelperSshClickBound = '1';
@@ -1412,27 +1430,70 @@
             return false;
         },
 
-        // 清理所有 Clone/SSH 加速源行和旧 input 的处理标记
-        // 切换协议时 GitHub 会更新 input value，需要清理标记以便重新处理
-        _cleanupCloneSSH(target) {
-            target.querySelectorAll('.ghhelper-clone-row, .ghhelper-ssh-row').forEach(e => e.remove());
-            target.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
-            target.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
+        // 清理 Clone 加速源行
+        _clearCloneRows() {
+            const scope = document.getElementById('__primerPortalRoot__') || document;
+            scope.querySelectorAll('.ghhelper-clone-row').forEach(e => e.remove());
+            scope.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
         },
 
-        // 修复下拉菜单 overflow/max-height，避免加速源被截断
+        // 清理 SSH 加速源行
+        _clearSshRows() {
+            const scope = document.getElementById('__primerPortalRoot__') || document;
+            scope.querySelectorAll('.ghhelper-ssh-row').forEach(e => e.remove());
+            scope.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
+        },
+
+        // 清理所有 Clone/SSH 加速源行
+        _clearAllCloneSshRows() {
+            this._clearCloneRows();
+            this._clearSshRows();
+        },
+
+        // 修复 Code 下拉菜单 overflow/max-height，避免加速源被截断
         _fixMenuOverflow(elem) {
+            // 尝试定位各种可能的菜单根容器
+            const selectors = [
+                '[class*="AnchoredOverlay"]',
+                '[class*="prc-Overlay"]',
+                '[class*="Overlay__"]',
+                '[data-overlay-container]',
+                '[class*="SelectMenu"]',
+                '[class*="ActionList"]'
+            ];
+            let overlay = null;
+            for (const sel of selectors) {
+                overlay = elem.closest(sel);
+                if (overlay) break;
+            }
+            // 如果没找到，从 portal 根往下找
+            if (!overlay) {
+                const portal = document.getElementById('__primerPortalRoot__');
+                if (portal) {
+                    for (const sel of selectors) {
+                        overlay = portal.querySelector(sel);
+                        if (overlay) break;
+                    }
+                }
+            }
+            if (overlay) {
+                overlay.style.setProperty('overflow', 'visible', 'important');
+                overlay.style.setProperty('overflow-x', 'visible', 'important');
+                overlay.style.setProperty('overflow-y', 'visible', 'important');
+                overlay.style.setProperty('max-height', 'none', 'important');
+                overlay.style.setProperty('height', 'auto', 'important');
+            }
+            // 同时逐层向上清理，确保中间层不截断（最多 15 层）
             let node = elem;
             let depth = 0;
-            while (node && node !== document.body && depth < 10) {
-                // 强制设置 overflow 和 height，使用 !important 确保覆盖 GitHub 的内联样式
-                node.style.setProperty('overflow', 'visible', 'important');
-                node.style.setProperty('overflow-y', 'visible', 'important');
-                node.style.setProperty('max-height', 'none', 'important');
-                // 如果是下拉菜单容器，也清除 height 限制
-                const cs = window.getComputedStyle(node);
-                if (cs.height !== 'auto' && cs.height !== '0px' && depth < 4) {
-                    node.style.setProperty('height', 'auto', 'important');
+            while (node && node !== document.body && depth < 15) {
+                const style = getComputedStyle(node);
+                // 只清理有截断限制的元素，避免干扰正常布局
+                if (style.overflow !== 'visible' || style.overflowY !== 'visible' || style.maxHeight !== 'none') {
+                    node.style.setProperty('overflow', 'visible', 'important');
+                    node.style.setProperty('overflow-x', 'visible', 'important');
+                    node.style.setProperty('overflow-y', 'visible', 'important');
+                    node.style.setProperty('max-height', 'none', 'important');
                 }
                 node = node.parentElement;
                 depth++;
@@ -1448,9 +1509,7 @@
             });
             this.processRawButtons();
             // Clone/SSH：清理加速源行和标记，等待下次打开下拉菜单时重新处理
-            document.querySelectorAll('#__primerPortalRoot__').forEach(portal => {
-                this._cleanupCloneSSH(portal);
-            });
+            this._clearAllCloneSshRows();
         },
 
         reprocessAll() {
@@ -2483,24 +2542,44 @@
         const tryStart = () => {
             const portal = document.getElementById('__primerPortalRoot__');
             if (!portal) {
-                // portal 尚未生成，延迟重试
                 setTimeout(tryStart, 1000);
                 return;
             }
             if (portal.dataset.ghhelperObserved === '1') return;
             portal.dataset.ghhelperObserved = '1';
+
+            let debounceTimer = null;
+
+            const processPortalContent = () => {
+                // 检查当前显示的是哪种类型的 Clone URL
+                const httpsInput = portal.querySelector('input[value^="https://"][value*="github.com"]');
+                const sshInput = portal.querySelector('input[value^="git@"][value*="github.com"]');
+
+                if (httpsInput && DOMRenderer._isCloneInput(httpsInput)) {
+                    // 当前显示 HTTPS Clone
+                    DOMRenderer._clearSshRows();
+                    DOMRenderer.processCloneButtons(portal);
+                } else if (sshInput && DOMRenderer._isCloneInput(sshInput)) {
+                    // 当前显示 SSH Clone
+                    DOMRenderer._clearCloneRows();
+                    DOMRenderer.processSSHButtons(portal);
+                }
+            };
+
             const observer = new MutationObserver((mutations) => {
-                mutations.forEach(m => {
-                    m.addedNodes.forEach(target => {
-                        if (target.nodeType !== 1) return;
-                        if (target.tagName !== 'DIV') return;
-                        // Code 下拉菜单、对话框等都会渲染到 portal 下
-                        DOMRenderer.processCloneButtons(target);
-                        DOMRenderer.processSSHButtons(target);
-                    });
-                });
+                // 过滤脚本自身的 DOM 变化，避免无限循环
+                if (isScriptMutation(mutations)) return;
+
+                // 防抖：短时间内多次变化只处理一次
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    debounceTimer = null;
+                    LOG('Portal MutationObserver 触发');
+                    processPortalContent();
+                }, 100);
             });
-            observer.observe(portal, { childList: true, subtree: true });
+
+            observer.observe(portal, { childList: true, subtree: true, characterData: true });
             LOG('Portal MutationObserver 已启动');
         };
         tryStart();
