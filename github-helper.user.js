@@ -2454,20 +2454,24 @@
     const MAX_RETRY = 5;
     const RETRY_DELAY = 800;
     let _initTimer = null;
-    let _initRunning = false;
+    let _initDone = false;
 
     function init() {
-        // 防抖：短时间内多次调用只执行一次（urlchange/turbo:load/pjax:end 可能同时触发）
+        // 首次调用立即执行，后续调用防抖（避免 urlchange/turbo:load 频繁触发）
+        if (!_initDone) {
+            _initDone = true;
+            _doInit();
+            return;
+        }
+        // 后续调用防抖
         if (_initTimer) clearTimeout(_initTimer);
         _initTimer = setTimeout(() => {
             _initTimer = null;
             _doInit();
-        }, 200);
+        }, 300);
     }
 
     function _doInit() {
-        if (_initRunning) return;
-        _initRunning = true;
         try {
             LOG('init 调用, 重试次数:', _initRetryCount, 'pathname:', window.location.pathname);
             // 初始化加速源存储（首次写入种子，升级合并）
@@ -2513,8 +2517,8 @@
                     _initRetryCount = 0;
                 }, RETRY_DELAY);
             }
-        } finally {
-            _initRunning = false;
+        } catch (e) {
+            LOG('init 异常:', e.message);
         }
     }
 
