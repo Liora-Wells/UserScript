@@ -19,7 +19,7 @@
 (function () {
     'use strict';
 
-    const DEBUG = false;
+    const DEBUG = true;
     const LOG = (...args) => { if (DEBUG) console.log('[GH助手]', ...args); };
     const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
     const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
@@ -2473,13 +2473,13 @@
 
     function _doInit() {
         try {
-            LOG('init 调用, 重试次数:', _initRetryCount, 'pathname:', window.location.pathname);
-            // 初始化加速源存储（首次写入种子，升级合并）
+            const t0 = performance.now();
+            LOG('init 调用, pathname:', window.location.pathname);
             StorageManager.initProxies();
             DOMRenderer.injectCSS();
             DOMRenderer.injectGearButton();
+            const t1 = performance.now();
 
-            // 全局点击监听：点击下拉菜单外部时关闭（只绑一次）
             if (!window.__ghhelperDropdownBound) {
                 window.__ghhelperDropdownBound = true;
                 document.addEventListener('click', function (e) {
@@ -2501,15 +2501,14 @@
             }
 
             processAllDetails();
-
-            // Raw 加速按钮（文件查看页）
+            const t2 = performance.now();
             DOMRenderer.processRawButtons();
-
-            // Release 页面才启动 details observer，非 Release 页面会断开旧 observer
-            startDetailsObserver();
-
-            // Code 下拉菜单（Clone/SSH）监听
-            startPortalObserver();
+            const t3 = performance.now();
+            // 临时禁用 observer 进行性能排查
+            // startDetailsObserver();
+            // startPortalObserver();
+            const t4 = performance.now();
+            LOG('init 耗时: total=' + (t4-t0).toFixed(1) + 'ms, gear=' + (t1-t0).toFixed(1) + 'ms, details=' + (t2-t1).toFixed(1) + 'ms, raw=' + (t3-t2).toFixed(1) + 'ms, observers=' + (t4-t3).toFixed(1) + 'ms');
 
             if (_initRetryCount < MAX_RETRY) {
                 _initRetryCount++;
