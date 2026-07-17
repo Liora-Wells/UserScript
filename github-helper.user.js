@@ -2555,53 +2555,6 @@
         LOG('  匹配到 Assets 的 details:', assetCount, '个');
     }
 
-    function init() {
-        LOG('init 调用, 重试次数:', _initRetryCount, 'pathname:', window.location.pathname);
-        // 初始化加速源存储（首次写入种子，升级合并）
-        StorageManager.initProxies();
-        DOMRenderer.injectCSS();
-        DOMRenderer.injectGearButton();
-
-        // 全局点击监听：点击下拉菜单外部时关闭（只绑一次）
-        if (!window.__ghhelperDropdownBound) {
-            window.__ghhelperDropdownBound = true;
-            document.addEventListener('click', function (e) {
-                if (!e.target.closest('.ghhelper-proxy-dropdown')) {
-                    document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
-                        el.classList.remove('ghhelper-dropdown-open');
-                    });
-                }
-            });
-        }
-
-        if (StorageManager.isFeatureEnabled('scrollToTop')) {
-            DOMRenderer.injectScrollToTop();
-        }
-
-        if (StorageManager.isFeatureEnabled('replaceTime')) {
-            DOMRenderer.replaceRelativeTimes();
-            DOMRenderer.startTimeObserver();
-        }
-
-        processAllDetails();
-
-        // Raw 加速按钮（文件查看页）
-        DOMRenderer.processRawButtons();
-
-        // Code 下拉菜单（Clone/SSH）监听
-        startPortalObserver();
-
-        if (_initRetryCount < MAX_RETRY) {
-            _initRetryCount++;
-            setTimeout(() => {
-                LOG('延迟重试 processAllDetails, 第', _initRetryCount, '次');
-                processAllDetails();
-                DOMRenderer.processRawButtons();
-                _initRetryCount = 0;
-            }, RETRY_DELAY);
-        }
-    }
-
     function startDetailsObserver() {
         let debounceTimer = null;
         const observer = new MutationObserver((mutations) => {
