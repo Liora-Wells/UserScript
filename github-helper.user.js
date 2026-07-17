@@ -2505,6 +2505,9 @@
             // Raw 加速按钮（文件查看页）
             DOMRenderer.processRawButtons();
 
+            // Release 页面才启动 details observer，非 Release 页面会断开旧 observer
+            startDetailsObserver();
+
             // Code 下拉菜单（Clone/SSH）监听
             startPortalObserver();
 
@@ -2563,14 +2566,25 @@
         LOG('  匹配到 Assets 的 details:', assetCount, '个');
     }
 
+    // 使用 URL 变化驱动初始化，不使用全局 body MutationObserver
+    // 只有在 Release 页面才启动 details observer
+    let _detailsObserver = null;
+
     function startDetailsObserver() {
+        // 先断开旧的 observer
+        if (_detailsObserver) {
+            _detailsObserver.disconnect();
+            _detailsObserver = null;
+        }
+
+        // 非 Release 页面不启动 observer
+        if (!/^\/[^/]+\/[^/]+\/releases/.test(window.location.pathname)) return;
+
         let debounceTimer = null;
-        const observer = new MutationObserver((mutations) => {
-            // 最廉价的检查：非 Release 页面直接跳过
-            if (!/^\/[^/]+\/[^/]+\/releases/.test(window.location.pathname)) return;
+        _detailsObserver = new MutationObserver((mutations) => {
             // 过滤脚本自身的 DOM 变化
             if (isScriptMutation(mutations)) return;
-            // 检查是否有未处理的 details（快速短路，避免不必要的 debounce）
+            // 检查是否有未处理的 details（快速短路）
             let hasNewDetails = false;
             for (const m of mutations) {
                 for (const n of m.addedNodes) {
@@ -2585,12 +2599,10 @@
                 debounceTimer = null;
                 LOG('MutationObserver 触发 processAllDetails');
                 processAllDetails();
-                DOMRenderer.processRawButtons();
             }, 300);
         });
-        observer.observe(document.body, { childList: true, subtree: true });
-        LOG('MutationObserver 已启动');
-        return observer;
+        _detailsObserver.observe(document.body, { childList: true, subtree: true });
+        LOG('Details MutationObserver 已启动 (Release 页面)');
     }
 
     // 监听 Code 下拉菜单的 portal，处理 Clone/SSH 加速源注入
@@ -2657,13 +2669,20 @@
 
     registerMenus();
     init();
-    const _detailsObserver = startDetailsObserver();
     document.addEventListener('turbo:load', init);
     document.addEventListener('pjax:end', init);
     if (window.onurlchange === undefined) {
-        history.pushState = (f => function () { var r = f.apply(this, arguments); window.dispatchEvent(new Event('urlchange')); return r; })(history.pushState);
-        history.replaceState = (f => function () { var r = f.apply(this, arguments); window.dispatchEvent(new Event('urlchange')); return r; })(history.replaceState);
-        window.addEventListener('popstate', () => window.dispatchEvent(new Event('urlchange')));
+        let _lastPath = window.location.pathname;
+        const _checkUrlChange = () => {
+            const newPath = window.location.pathname;
+            if (newPath !== _lastPath) {
+                _lastPath = newPath;
+                window.dispatchEvent(new Event('urlchange'));
+            }
+        };
+        history.pushState = (f => function () { var r = f.apply(this, arguments); _checkUrlChange(); return r; })(history.pushState);
+        history.replaceState = (f => function () { var r = f.apply(this, arguments); _checkUrlChange(); return r; })(history.replaceState);
+        window.addEventListener('popstate', _checkUrlChange);
     }
     window.addEventListener('urlchange', init);
 
