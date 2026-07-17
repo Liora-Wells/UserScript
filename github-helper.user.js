@@ -2457,9 +2457,11 @@
     let _initDone = false;
 
     function init() {
+        LOG('init() 被调用, _initDone=' + _initDone + ', pathname=' + window.location.pathname);
         // 首次调用立即执行，后续调用防抖（避免 urlchange/turbo:load 频繁触发）
         if (!_initDone) {
             _initDone = true;
+            LOG('init() 首次执行');
             _doInit();
             return;
         }
@@ -2467,6 +2469,7 @@
         if (_initTimer) clearTimeout(_initTimer);
         _initTimer = setTimeout(() => {
             _initTimer = null;
+            LOG('init() 防抖后执行');
             _doInit();
         }, 300);
     }
@@ -2668,14 +2671,16 @@
 
     registerMenus();
     init();
-    document.addEventListener('turbo:load', init);
-    document.addEventListener('pjax:end', init);
+    document.addEventListener('turbo:load', () => { LOG('turbo:load 事件触发'); init(); });
+    document.addEventListener('pjax:end', () => { LOG('pjax:end 事件触发'); init(); });
     if (window.onurlchange === undefined) {
         let _lastPath = window.location.pathname;
         const _checkUrlChange = () => {
             const newPath = window.location.pathname;
+            LOG('URL变化检查: old=' + _lastPath + ', new=' + newPath);
             if (newPath !== _lastPath) {
                 _lastPath = newPath;
+                LOG('触发 urlchange 事件');
                 window.dispatchEvent(new Event('urlchange'));
             }
         };
@@ -2683,7 +2688,7 @@
         history.replaceState = (f => function () { var r = f.apply(this, arguments); _checkUrlChange(); return r; })(history.replaceState);
         window.addEventListener('popstate', _checkUrlChange);
     }
-    window.addEventListener('urlchange', init);
+    window.addEventListener('urlchange', () => { LOG('urlchange 监听器触发'); init(); });
 
     LOG('=== GitHub 助手脚本加载完成, 版本 1.0.0 ===');
     LOG('  当前页面:', window.location.href);
