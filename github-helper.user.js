@@ -1284,6 +1284,8 @@
             if (!html) return;
             // 必须是 Clone URL（通常是 input-monospace 或类似样式）
             if (!this._isCloneInput(html)) return;
+            // 检查 input 是否可见（切换到 SSH tab 时 HTTPS input 可能被隐藏）
+            if (html.offsetParent === null && html.getClientRects().length === 0) return;
             // 已处理且加速源行仍存在则跳过（避免重复处理）
             if (html.dataset.ghhelperCloneProcessed === '1') {
                 const wrapperEl = html.parentElement;
@@ -1365,6 +1367,8 @@
             const html = target.querySelector('input[value^="git@"][value*="github.com"]');
             if (!html) return;
             if (!this._isCloneInput(html)) return;
+            // 检查 input 是否可见（切换到 HTTPS tab 时 SSH input 可能被隐藏）
+            if (html.offsetParent === null && html.getClientRects().length === 0) return;
             // 已处理且加速源行仍存在则跳过
             if (html.dataset.ghhelperSshProcessed === '1') {
                 const wrapperEl = html.parentElement;
@@ -2558,16 +2562,25 @@
     function startDetailsObserver() {
         let debounceTimer = null;
         const observer = new MutationObserver((mutations) => {
-            // 最廉价的检查：非 Release 页面直接跳过（避免主页卡顿）
+            // 最廉价的检查：非 Release 页面直接跳过
             if (!/^\/[^/]+\/[^/]+\/releases/.test(window.location.pathname)) return;
-            // 然后才做较昂贵的脚本自身变化过滤
+            // 过滤脚本自身的 DOM 变化
             if (isScriptMutation(mutations)) return;
+            // 检查是否有未处理的 details（快速短路，避免不必要的 debounce）
+            let hasNewDetails = false;
+            for (const m of mutations) {
+                for (const n of m.addedNodes) {
+                    if (n.nodeType === 1 && n.tagName === 'DETAILS') { hasNewDetails = true; break; }
+                    if (n.nodeType === 1 && n.querySelector && n.querySelector('details')) { hasNewDetails = true; break; }
+                }
+                if (hasNewDetails) break;
+            }
+            if (!hasNewDetails) return;
             if (debounceTimer) return;
             debounceTimer = setTimeout(() => {
                 debounceTimer = null;
                 LOG('MutationObserver 触发 processAllDetails');
                 processAllDetails();
-                // Raw 按钮可能在 pjax 后重新渲染
                 DOMRenderer.processRawButtons();
             }, 300);
         });
@@ -2591,19 +2604,10 @@
             let debounceTimer = null;
 
             const processPortalContent = () => {
-                // 检查当前显示的是哪种类型的 Clone URL
-                const httpsInput = portal.querySelector('input[value^="https://"][value*="github.com"]');
-                const sshInput = portal.querySelector('input[value^="git@"][value*="github.com"]');
-
-                if (httpsInput && DOMRenderer._isCloneInput(httpsInput)) {
-                    // 当前显示 HTTPS Clone：清理 SSH 加速源，处理 HTTPS
-                    DOMRenderer._clearSshRows();
-                    DOMRenderer.processCloneButtons(portal);
-                } else if (sshInput && DOMRenderer._isCloneInput(sshInput)) {
-                    // 当前显示 SSH Clone：清理 HTTPS 加速源，处理 SSH
-                    DOMRenderer._clearCloneRows();
-                    DOMRenderer.processSSHButtons(portal);
-                }
+                // 同时尝试处理两种类型的 Clone URL
+                // processCloneButtons/processSSHButtons 内部会检查 input 是否存在
+                DOMRenderer.processCloneButtons(portal);
+                DOMRenderer.processSSHButtons(portal);
             };
 
             // 检查是否需要处理：有 Clone/SSH input 但缺少对应的加速源行
@@ -2612,11 +2616,11 @@
                 const sshInput = portal.querySelector('input[value^="git@"][value*="github.com"]');
                 if (httpsInput && DOMRenderer._isCloneInput(httpsInput)) {
                     // 有 HTTPS input 但没有 Clone 加速源行
-                    return !portal.querySelector('.ghhelper-clone-row');
+                    if (!portal.querySelector('.ghhelper-clone-row')) return true;
                 }
                 if (sshInput && DOMRenderer._isCloneInput(sshInput)) {
                     // 有 SSH input 但没有 SSH 加速源行
-                    return !portal.querySelector('.ghhelper-ssh-row');
+                    if (!portal.querySelector('.ghhelper-ssh-row')) return true;
                 }
                 return false;
             };
