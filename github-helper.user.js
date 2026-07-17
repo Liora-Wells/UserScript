@@ -514,15 +514,25 @@
     // ============================================================
 
     // 模块级辅助：判断 mutation 是否仅由脚本自身元素引起（避免 observer 无限循环）
+    // 快速短路：只要有任何非脚本元素变化就返回 false
     const isScriptMutation = (mutations) => {
-        return Array.from(mutations).every(m => {
-            const nodes = [...Array.from(m.addedNodes), ...Array.from(m.removedNodes)];
-            if (!nodes.length) return true; // 属性变化/文本变化忽略
-            return nodes.every(n => {
-                if (n.nodeType !== 1) return true; // 文本节点忽略
-                return n.hasAttribute('data-ghhelper-element') || n.closest('[data-ghhelper-element]') || n.querySelector('[data-ghhelper-element]');
-            });
-        });
+        for (const m of mutations) {
+            // 属性变化/文本变化不视为脚本自身变化，但也不触发处理（由调用方决定）
+            if (m.type === 'attributes') continue;
+            for (const n of m.addedNodes) {
+                if (n.nodeType !== 1) continue;
+                if (!n.hasAttribute('data-ghhelper-element') && !n.closest('[data-ghhelper-element]')) {
+                    return false;
+                }
+            }
+            for (const n of m.removedNodes) {
+                if (n.nodeType !== 1) continue;
+                if (!n.hasAttribute('data-ghhelper-element') && !n.closest('[data-ghhelper-element]')) {
+                    return false;
+                }
+            }
+        }
+        return true;
     };
 
     const DOMRenderer = {
@@ -2521,7 +2531,9 @@
     function startDetailsObserver() {
         let debounceTimer = null;
         const observer = new MutationObserver((mutations) => {
-            // 过滤脚本自身的 DOM 变化，避免无限循环
+            // 最廉价的检查：非 Release 页面直接跳过（避免主页卡顿）
+            if (!/^\/[^/]+\/[^/]+\/releases/.test(window.location.pathname)) return;
+            // 然后才做较昂贵的脚本自身变化过滤
             if (isScriptMutation(mutations)) return;
             if (debounceTimer) return;
             debounceTimer = setTimeout(() => {
@@ -2567,7 +2579,10 @@
             };
 
             const observer = new MutationObserver((mutations) => {
-                // 过滤脚本自身的 DOM 变化，避免无限循环
+                // 最廉价的检查：portal 没有 Clone/SSH input 时直接跳过
+                // 避免在非 Code 菜单（如通知面板、对话框等）上做无用处理
+                if (!portal.querySelector('input[value^="https://"][value*="github.com"], input[value^="git@"][value*="github.com"]')) return;
+                // 然后过滤脚本自身的 DOM 变化
                 if (isScriptMutation(mutations)) return;
 
                 // 防抖：短时间内多次变化只处理一次
@@ -2579,7 +2594,8 @@
                 }, 100);
             });
 
-            observer.observe(portal, { childList: true, subtree: true, characterData: true });
+            // 只监听 childList，不监听 characterData（避免文本变化频繁触发）
+            observer.observe(portal, { childList: true, subtree: true });
             LOG('Portal MutationObserver 已启动');
         };
         tryStart();
