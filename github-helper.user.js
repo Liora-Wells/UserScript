@@ -1279,13 +1279,18 @@
         // 关键：不修改原 input 的 value，避免切换协议时污染
         processCloneButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            // 查找 HTTPS Clone URL input（未处理过的）
-            const html = target.querySelector('input[value^="https://"][value*="github.com"]:not([data-ghhelper-clone-processed])');
+            // 查找 HTTPS Clone URL input
+            const html = target.querySelector('input[value^="https://"][value*="github.com"]');
             if (!html) return;
             // 必须是 Clone URL（通常是 input-monospace 或类似样式）
             if (!this._isCloneInput(html)) return;
+            // 已处理且加速源行仍存在则跳过（避免重复处理）
+            if (html.dataset.ghhelperCloneProcessed === '1') {
+                const wrapperEl = html.parentElement;
+                if (wrapperEl && wrapperEl.nextElementSibling && wrapperEl.nextElementSibling.classList.contains('ghhelper-clone-row')) return;
+            }
 
-            // 先清理旧的 Clone 加速源（保留 SSH 的，因为可能在不同 tab 下）
+            // 清理旧的 Clone 加速源（保留 SSH 的，因为可能在不同 tab 下）
             this._clearCloneRows();
             // 标记当前 input 为已处理
             html.setAttribute('data-ghhelper-clone-processed', '1');
@@ -1357,11 +1362,16 @@
         // SSH 加速：在 Code 下拉菜单的 SSH clone input 下方插入加速源 input
         processSSHButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            const html = target.querySelector('input[value^="git@"][value*="github.com"]:not([data-ghhelper-ssh-processed])');
+            const html = target.querySelector('input[value^="git@"][value*="github.com"]');
             if (!html) return;
             if (!this._isCloneInput(html)) return;
+            // 已处理且加速源行仍存在则跳过
+            if (html.dataset.ghhelperSshProcessed === '1') {
+                const wrapperEl = html.parentElement;
+                if (wrapperEl && wrapperEl.nextElementSibling && wrapperEl.nextElementSibling.classList.contains('ghhelper-ssh-row')) return;
+            }
 
-            // 先清理旧的 SSH 加速源（保留 Clone 的，因为可能在不同 tab 下）
+            // 清理旧的 SSH 加速源（保留 Clone 的，因为可能在不同 tab 下）
             this._clearSshRows();
             // 标记当前 input 为已处理
             html.setAttribute('data-ghhelper-ssh-processed', '1');
@@ -1440,24 +1450,24 @@
             return false;
         },
 
-        // 清理 Clone 加速源行
+        // 清理 Clone 加速源行（只删除注入的行，不清除 input 标记）
         _clearCloneRows() {
             const scope = document.getElementById('__primerPortalRoot__') || document;
             scope.querySelectorAll('.ghhelper-clone-row').forEach(e => e.remove());
-            scope.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
         },
 
-        // 清理 SSH 加速源行
+        // 清理 SSH 加速源行（只删除注入的行，不清除 input 标记）
         _clearSshRows() {
             const scope = document.getElementById('__primerPortalRoot__') || document;
             scope.querySelectorAll('.ghhelper-ssh-row').forEach(e => e.remove());
-            scope.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
         },
 
-        // 清理所有 Clone/SSH 加速源行
+        // 清理所有 Clone/SSH 加速源行，并重置 input 标记（用于加速源变更后重渲）
         _clearAllCloneSshRows() {
-            this._clearCloneRows();
-            this._clearSshRows();
+            const scope = document.getElementById('__primerPortalRoot__') || document;
+            scope.querySelectorAll('.ghhelper-clone-row, .ghhelper-ssh-row').forEach(e => e.remove());
+            scope.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
+            scope.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
         },
 
         // 修复 Code 下拉菜单 overflow/max-height，避免加速源被截断
@@ -2550,6 +2560,7 @@
     }
 
     // 监听 Code 下拉菜单的 portal，处理 Clone/SSH 加速源注入
+    // 策略：监听 portal 的直接子节点变化（而非 subtree），只在菜单打开/切换时触发
     function startPortalObserver() {
         const tryStart = () => {
             const portal = document.getElementById('__primerPortalRoot__');
@@ -2568,33 +2579,51 @@
                 const sshInput = portal.querySelector('input[value^="git@"][value*="github.com"]');
 
                 if (httpsInput && DOMRenderer._isCloneInput(httpsInput)) {
-                    // 当前显示 HTTPS Clone
+                    // 当前显示 HTTPS Clone：清理 SSH 加速源，处理 HTTPS
                     DOMRenderer._clearSshRows();
                     DOMRenderer.processCloneButtons(portal);
                 } else if (sshInput && DOMRenderer._isCloneInput(sshInput)) {
-                    // 当前显示 SSH Clone
+                    // 当前显示 SSH Clone：清理 HTTPS 加速源，处理 SSH
                     DOMRenderer._clearCloneRows();
                     DOMRenderer.processSSHButtons(portal);
                 }
             };
 
+            // 检查是否需要处理：有 Clone/SSH input 但缺少对应的加速源行
+            const needsProcessing = () => {
+                const httpsInput = portal.querySelector('input[value^="https://"][value*="github.com"]');
+                const sshInput = portal.querySelector('input[value^="git@"][value*="github.com"]');
+                if (httpsInput && DOMRenderer._isCloneInput(httpsInput)) {
+                    // 有 HTTPS input 但没有 Clone 加速源行
+                    return !portal.querySelector('.ghhelper-clone-row');
+                }
+                if (sshInput && DOMRenderer._isCloneInput(sshInput)) {
+                    // 有 SSH input 但没有 SSH 加速源行
+                    return !portal.querySelector('.ghhelper-ssh-row');
+                }
+                return false;
+            };
+
             const observer = new MutationObserver((mutations) => {
-                // 最廉价的检查：portal 没有 Clone/SSH input 时直接跳过
-                // 避免在非 Code 菜单（如通知面板、对话框等）上做无用处理
-                if (!portal.querySelector('input[value^="https://"][value*="github.com"], input[value^="git@"][value*="github.com"]')) return;
-                // 然后过滤脚本自身的 DOM 变化
+                // 过滤脚本自身的 DOM 变化，避免无限循环
                 if (isScriptMutation(mutations)) return;
 
-                // 防抖：短时间内多次变化只处理一次
+                // 快速检查：是否需要处理（有 input 但缺少加速源行）
+                if (!needsProcessing()) return;
+
+                // 防抖：React 重新渲染时会连续触发多次变化，等待渲染完成后再处理
                 if (debounceTimer) clearTimeout(debounceTimer);
                 debounceTimer = setTimeout(() => {
                     debounceTimer = null;
-                    LOG('Portal MutationObserver 触发');
-                    processPortalContent();
-                }, 100);
+                    // 再次检查（防抖期间可能已被处理）
+                    if (needsProcessing()) {
+                        LOG('Portal MutationObserver 触发');
+                        processPortalContent();
+                    }
+                }, 300);
             });
 
-            // 只监听 childList，不监听 characterData（避免文本变化频繁触发）
+            // 监听 subtree childList（切换 tab 时 React 会重新渲染内部节点）
             observer.observe(portal, { childList: true, subtree: true });
             LOG('Portal MutationObserver 已启动');
         };
