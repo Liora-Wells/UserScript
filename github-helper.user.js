@@ -518,9 +518,17 @@
     // ============================================================
 
     // 辅助：判断节点是否为脚本自身元素或其子节点（用于 observer 过滤）
+    // 优化：先用 className 前缀检查（最快），再 hasAttribute，最后才 closest
+    // 大多数 addedNodes 会在第一步就返回 false，避免 closest 向上遍历到 document 根
     const isScriptNode = (n) => {
-        return n && n.nodeType === 1 &&
-            (n.hasAttribute('data-ghhelper-element') || !!n.closest('[data-ghhelper-element]'));
+        if (!n || n.nodeType !== 1) return false;
+        // 快速路径：脚本元素都带 ghhelper- className 前缀
+        const cn = n.className;
+        if (typeof cn === 'string' && cn.indexOf('ghhelper-') !== -1) return true;
+        // 脚本顶层元素都带 data-ghhelper-element 标记
+        if (n.hasAttribute('data-ghhelper-element')) return true;
+        // 兜底：向上查找（仅在脚本元素作为子节点被插入时才会命中）
+        return !!n.closest('[data-ghhelper-element]');
     };
 
     const DOMRenderer = {
@@ -815,12 +823,18 @@
                     btn.innerHTML = '<span class="Button-content"><span class="Button-label">获取中...</span></span>';
                     btn.disabled = true;
                     this.fetchReleaseData(repoInfo.owner, repoInfo.repo, tagName).then(d => {
+                        // 防御：用户切页后 details/btn 已脱离 DOM，直接放弃操作
+                        if (!document.contains(details) || !document.contains(btn)) {
+                            busy = false;
+                            return;
+                        }
                         assets = d.assets;
                         this.injectDownloadCounts(details, assets);
                         btn.innerHTML = '<span class="Button-content"><span class="Button-label">刷新下载量</span></span>';
                         btn.disabled = false;
                         busy = false;
                     }).catch(() => {
+                        if (!document.contains(btn)) { busy = false; return; }
                         btn.innerHTML = '<span class="Button-content"><span class="Button-label color-fg-danger">获取失败(限流)</span></span>';
                         btn.disabled = false;
                         busy = false;
@@ -830,15 +844,17 @@
             }
 
             let retryTimer = null;
-            let isRefreshing = false;
 
             const refresh = () => {
-                if (!details.open || isRefreshing) return;
-                isRefreshing = true;
+                // 防御：details 已被 SPA 移除则立即清理 timer 并退出，避免闭包泄漏
+                if (!document.contains(details)) {
+                    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+                    return;
+                }
+                if (!details.open) return;
                 LOG('  refresh details 内容, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
                 if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
                 if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
-                isRefreshing = false;
 
                 // 如果展开后还没有下载链接，延迟重试（GitHub 异步加载）
                 const hasLinks = details.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
@@ -919,7 +935,7 @@
             });
 
             validRows.forEach(r => r.remove());
-            parent.querySelectorAll('[data-ghhelper-wrapper="1"]').forEach(w => w.remove());
+            // 注意：无需再次查询 wrapper，上面第 893 行已移除所有旧 wrapper
             validRows.sort((a, b) => b._ghs - a._ghs);
 
             const normal = validRows.filter(r => r._ghg.id !== 'meta');
@@ -1012,17 +1028,17 @@
             validRows.forEach(row => {
                 const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],a[href*="/attestations/"]');
                 let gi = { id: 'other', showTag: false };
+                let fn = '';
                 if (nl) {
-                    const fn = this.getFileNameFromLink(nl);
+                    fn = this.getFileNameFromLink(nl);
                     const href = nl.getAttribute('href') || '';
                     gi = href.includes('/archive/') ? { id: 'source', showTag: false }
                         : href.includes('/attestations/') ? { id: 'meta', showTag: false }
                         : SortEngine.parseFileGroup(fn);
                 }
-                const score = nl ? SortEngine.calculateMatchScore(this.getFileNameFromLink(nl), gi, os, arch) : -10000;
+                const score = nl ? SortEngine.calculateMatchScore(fn, gi, os, arch) : -10000;
                 row._ghs = score; row._ghg = gi; row._ghn = nl;
                 // 签名/校验/meta 行不参与重排（留在 wrapper 内不动）
-                const fn = nl ? this.getFileNameFromLink(nl) : '';
                 if (gi.id === 'meta' || SortEngine.isSignatureFile(fn)) {
                     // 签名行留在 wrapper 内，只更新样式
                     this._styleRow(row);
@@ -1116,8 +1132,12 @@
         },
 
         processProxyButtons(detailsElem) {
-            const rows = Array.from(detailsElem.querySelectorAll('li')).filter(r =>
-                r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]'));
+            // 一次性收集 row 和 nl，避免 forEach 中重复 querySelector
+            const rows = [];
+            Array.from(detailsElem.querySelectorAll('li')).forEach(r => {
+                const nl = r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
+                if (nl) rows.push({ row: r, nl });
+            });
             LOG('    processProxyButtons: 有效行数=' + rows.length);
             if (!rows.length) return;
 
@@ -1125,9 +1145,7 @@
             const all = [...disp.pinned, ...disp.overflow];
             if (!all.length) { LOG('    processProxyButtons: 无可用加速源'); return; }
 
-            rows.forEach(row => {
-                const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
-                if (!nl) return;
+            rows.forEach(({ row, nl }) => {
                 const href = nl.getAttribute('href');
                 if (!href) return;
 
@@ -1498,8 +1516,8 @@
         reprocessRawCloneSSH() {
             // Raw
             document.querySelectorAll('a[data-testid="raw-button"]').forEach(btn => {
-                btn.dataset.ghhelperRawProcessed = '';
-                btn.dataset.ghhelperRawCount = '0';
+                delete btn.dataset.ghhelperRawProcessed;
+                delete btn.dataset.ghhelperRawCount;
             });
             this.processRawButtons();
             // Clone/SSH：清理加速源行和标记，等待下次打开下拉菜单时重新处理
@@ -1608,12 +1626,6 @@
             document.querySelectorAll('relative-time:not([data-ghhelper-time])').forEach(el => this.replaceOneTime(el));
         },
 
-        // 时间替换不再使用独立 observer（避免与全局 observer 叠加导致 CPU 飙升）
-        // 改为在 urlchange 和全局 observer 检测到 relative-time 新增时触发
-        startTimeObserver() {
-            // no-op：保留函数签名以兼容旧调用，实际逻辑由全局 observer 处理
-        },
-
         injectScrollToTop() {
             if (this._scrollTopBtn) return;
             const btn = document.createElement('button');
@@ -1625,9 +1637,22 @@
             btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
             document.body.appendChild(btn);
             this._scrollTopBtn = btn;
-            const u = () => btn.classList.toggle('ghhelper-visible', window.scrollY > 300);
-            window.addEventListener('scroll', u, { passive: true });
-            u();
+            // 保存 handler 引用，便于功能关闭时 removeEventListener
+            this._scrollTopHandler = () => btn.classList.toggle('ghhelper-visible', window.scrollY > 300);
+            window.addEventListener('scroll', this._scrollTopHandler, { passive: true });
+            this._scrollTopHandler();
+        },
+
+        // 移除回到顶部按钮和 scroll 监听器（功能关闭时调用）
+        removeScrollToTop() {
+            if (this._scrollTopHandler) {
+                window.removeEventListener('scroll', this._scrollTopHandler, { passive: true });
+                this._scrollTopHandler = null;
+            }
+            if (this._scrollTopBtn) {
+                this._scrollTopBtn.remove();
+                this._scrollTopBtn = null;
+            }
         },
 
         injectGearButton() {
@@ -2327,6 +2352,11 @@
                     const f = StorageManager.getFeatures();
                     f[this.dataset.feature] = this.checked;
                     StorageManager.setFeatures(f);
+                    // 功能开关特定处理
+                    if (this.dataset.feature === 'scrollToTop') {
+                        if (this.checked) DOMRenderer.injectScrollToTop();
+                        else DOMRenderer.removeScrollToTop();
+                    }
                     // 触发重新处理
                     DOMRenderer.reprocessAll();
                 });
@@ -2444,8 +2474,9 @@
         }
 
         if (StorageManager.isFeatureEnabled('replaceTime')) {
+            // 时间替换：首次执行一次全量替换
+            // 后续由全局 observer 检测 relative-time 新增时增量替换（见 startGlobalObserver）
             DOMRenderer.replaceRelativeTimes();
-            DOMRenderer.startTimeObserver();
         }
     }
 
@@ -2482,12 +2513,15 @@
     function init() {
         try {
             oneTimeSetup();
+            updatePathCache(); // 更新路径分流缓存，供全局 observer 使用
             routeByPathname();
             // 延迟再处理一次，规避 GitHub SPA 异步渲染
             // 清除上一次的 timer，避免 urlchange 频繁触发时堆积
             if (_routeTimer) clearTimeout(_routeTimer);
             _routeTimer = setTimeout(() => {
                 _routeTimer = null;
+                // SPA 异步渲染后 #repository-container-header 可能延迟出现，再更新一次
+                updatePathCache();
                 routeByPathname();
             }, 1500);
         } catch (e) {
@@ -2498,6 +2532,18 @@
     // processAllDetails 的缓存状态（模块级，避免闭包累积和高频重复处理）
     let _lastDetailsCount = 0;
     let _lastDetailsPath = '';
+    // processAllDetails 防抖 timer：合并 observer 高频触发
+    let _processAllDetailsTimer = null;
+
+    // 防抖版本：合并 100ms 内的多次触发，避免 observer 高频调用 processAllDetails
+    // 仅用于全局 observer 回调；init/toggle 等直接调用 processAllDetails 即时处理
+    function processAllDetailsDebounced() {
+        if (_processAllDetailsTimer) return;
+        _processAllDetailsTimer = setTimeout(() => {
+            _processAllDetailsTimer = null;
+            processAllDetails();
+        }, 100);
+    }
 
     function processAllDetails() {
         const pathname = window.location.pathname;
@@ -2560,17 +2606,30 @@
     // 每个处理函数（processAllDetails/processCloneButtons 等）内部都会检查目标元素是否已存在
 
     let _globalObserverStarted = false;
+    // 路径分流缓存：在 urlchange 时更新，避免 observer 回调中高频 querySelector
+    let _isReleasePage = false;
+    let _isRepoHome = false;
+    function updatePathCache() {
+        const pathname = location.pathname;
+        _isReleasePage = pathname.indexOf('/releases') > -1;
+        // 仓库主页特征：有 #repository-container-header 且非隐藏
+        // 仅在非 Release 页面时检查，避免重复 querySelector
+        _isRepoHome = !_isReleasePage &&
+            document.querySelector('#repository-container-header:not([hidden])') !== null;
+    }
+
     function startGlobalObserver() {
         if (_globalObserverStarted) return;
         _globalObserverStarted = true;
+        updatePathCache();
 
         // 全局 observer 回调：精确匹配 addedNodes 的特征，避免 expensive querySelector
         // 找到第一个匹配即退出（return），避免遍历所有 addedNodes
         // 处理函数内部都有幂等检查，可安全重复调用
         const callback = (mutationsList) => {
-            const pathname = location.pathname;
-            const isReleasePage = pathname.indexOf('/releases') > -1;
-            const isRepoHome = !isReleasePage && document.querySelector('#repository-container-header:not([hidden])') !== null;
+            // 使用缓存的路径分流结果，避免每次 mutation 都做 querySelector
+            const isReleasePage = _isReleasePage;
+            const isRepoHome = _isRepoHome;
 
             for (const mutation of mutationsList) {
                 for (const target of mutation.addedNodes) {
@@ -2583,19 +2642,19 @@
                         // GitHub Release 资产列表容器特征
                         if (target.tagName === 'DIV' && target.dataset.viewComponent === 'true' && target.classList[0] === 'Box') {
                             LOG('全局 observer: Release Box 新增');
-                            processAllDetails();
+                            processAllDetailsDebounced();
                             return;
                         }
                         // 新增的 details 元素
                         if (target.tagName === 'DETAILS') {
                             LOG('全局 observer: details 新增');
-                            processAllDetails();
+                            processAllDetailsDebounced();
                             return;
                         }
                         // 新增的 include-fragment（Assets 异步加载容器）
                         if (target.tagName === 'INCLUDE-FRAGMENT') {
                             LOG('全局 observer: include-fragment 新增');
-                            processAllDetails();
+                            processAllDetailsDebounced();
                             return;
                         }
                         // 新增的下载链接（资产展开后异步加载）
@@ -2603,7 +2662,7 @@
                             const href = target.getAttribute('href') || '';
                             if (href.indexOf('/releases/download/') > -1 || href.indexOf('/archive/') > -1) {
                                 LOG('全局 observer: 下载链接新增');
-                                processAllDetails();
+                                processAllDetailsDebounced();
                                 return;
                             }
                         }
