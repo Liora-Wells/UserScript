@@ -1663,6 +1663,111 @@
             }
         },
 
+        // ☁ 单文件快捷下载：在仓库文件列表每行文件图标后追加悬浮下载图标
+        // 样式完全照搬 docs/Github 增强 - 高速下载.js：鼠标悬停时显示，点击用默认 Raw 加速源后台打开
+        processFileQuickDownload() {
+            if (!StorageManager.isFeatureEnabled('fileQuickDownload')) return;
+            // 完全照搬参考脚本选择器：旧版 + 新版 GitHub
+            const files = document.querySelectorAll('div.Box-row svg.octicon.octicon-file, .react-directory-filename-column>svg.color-fg-muted');
+            if (files.length === 0) return;
+            if (location.pathname.indexOf('/tags') > -1) return;
+            // 幂等检查：已有 ☁ 则跳过
+            if (document.querySelectorAll('a.fileDownLink').length > 0) return;
+
+            const proxy = ProxyManager.getDefaultRawProxy();
+            if (!proxy) return;
+
+            // 局部悬停/离开处理器（闭包内函数，调用 DOMRenderer 方法）
+            const self = this;
+            const mouseOverHandler = function (evt) {
+                const elem = evt.currentTarget;
+                const cloud = elem.querySelector('.fileDownLink');
+                // 失效标记重建
+                if (cloud && cloud.dataset.ghhelperStale === '1') {
+                    cloud.remove();
+                    self.rebuildSingleRowCloud(elem);
+                }
+                elem.querySelectorAll('.fileDownLink').forEach(el => { el.style.cssText = 'display: inline'; });
+                elem.querySelectorAll('svg.octicon.octicon-file, svg.color-fg-muted').forEach(el => { el.style.cssText = 'display: none'; });
+            };
+            const mouseOutHandler = function (evt) {
+                const elem = evt.currentTarget;
+                elem.querySelectorAll('.fileDownLink').forEach(el => { el.style.cssText = 'display: none'; });
+                elem.querySelectorAll('svg.octicon.octicon-file, svg.color-fg-muted').forEach(el => { el.style.cssText = 'display: inline'; });
+            };
+
+            files.forEach(fileElm => {
+                const trElm = fileElm.parentNode.parentNode;
+                const cntElm_a = trElm.querySelector('[role="rowheader"] > .css-truncate.css-truncate-target.d-block.width-fit > a, .react-directory-truncate>a');
+                if (!cntElm_a) return;
+                // 使用 textContent 而非 innerText，避免中文化脚本对节点文本的修改影响
+                const Name = cntElm_a.textContent.trim();
+                const href = cntElm_a.getAttribute('href');
+                const url = ProxyManager.buildUrl(proxy, href, 'raw');
+
+                fileElm.insertAdjacentHTML('afterend',
+                    '<a href="' + url + '" data-filename="' + Name + '" class="fileDownLink ghhelper-file-down-link" '
+                    + 'data-ghhelper-element="1" data-ghhelper-nt="1" style="display:none" '
+                    + 'title="「' + proxy.name + '」&#10;&#10;[Alt + 左键] 或 [右键 - 另存为...] 下载文件。&#10;注意：鼠标点击 [☁] 图标，而不是左侧的文件名！&#10;&#10;' + (proxy.desc || '') + '&#10;&#10;提示：在设置面板 - 加速源管理，可设为默认加速源。">'
+                    + SVG_CLOUD + '</a>'
+                );
+
+                trElm.onmouseover = mouseOverHandler;
+                trElm.onmouseout = mouseOutHandler;
+                const cloudLink = trElm.querySelector('a.fileDownLink');
+                if (cloudLink) cloudLink.addEventListener('click', DOMRenderer._onCloudClick);
+            });
+
+            LOG('  processFileQuickDownload: 已为 ' + files.length + ' 个文件行添加 ☁ 悬浮图标');
+        },
+
+        // 单行重建 ☁（默认加速源变更后，下次悬停时调用）
+        rebuildSingleRowCloud(trElm) {
+            const fileElm = trElm.querySelector('svg.octicon.octicon-file, svg.color-fg-muted');
+            if (!fileElm) return;
+            const proxy = ProxyManager.getDefaultRawProxy();
+            if (!proxy) return;
+            const cntElm_a = trElm.querySelector('[role="rowheader"] > .css-truncate.css-truncate-target.d-block.width-fit > a, .react-directory-truncate>a');
+            if (!cntElm_a) return;
+            const Name = cntElm_a.textContent.trim();
+            const href = cntElm_a.getAttribute('href');
+            const url = ProxyManager.buildUrl(proxy, href, 'raw');
+
+            fileElm.insertAdjacentHTML('afterend',
+                '<a href="' + url + '" data-filename="' + Name + '" class="fileDownLink ghhelper-file-down-link" '
+                + 'data-ghhelper-element="1" data-ghhelper-nt="1" style="display:none" '
+                + 'title="「' + proxy.name + '」&#10;&#10;' + (proxy.desc || '') + '">'
+                + SVG_CLOUD + '</a>'
+            );
+            const cloudLink = trElm.querySelector('a.fileDownLink');
+            if (cloudLink) cloudLink.addEventListener('click', DOMRenderer._onCloudClick);
+        },
+
+        // ☁ 点击事件处理器：后台打开新标签页
+        _onCloudClick(e) {
+            e.preventDefault();
+            const url = this.href;
+            try {
+                GM_openInTab(url, { active: false, insert: true, setParent: true });
+            } catch (err) {
+                // 兜底：直接打开
+                window.open(url, '_blank');
+            }
+        },
+
+        // 标记所有 ☁ 为失效（不立即删除，下次悬停时重建）
+        reprocessFileQuickDownload() {
+            document.querySelectorAll('.fileDownLink').forEach(el => {
+                el.dataset.ghhelperStale = '1';
+            });
+            LOG('  reprocessFileQuickDownload: 已标记 ☁ 失效');
+        },
+
+        // 清理所有 ☁ 悬浮图标（关闭功能开关时调用）
+        _clearFileQuickDownload() {
+            document.querySelectorAll('.fileDownLink').forEach(e => e.remove());
+        },
+
         // 重渲 Raw/Clone/SSH（加速源变更后）
         reprocessRawCloneSSH() {
             // Raw
