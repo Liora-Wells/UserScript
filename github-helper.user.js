@@ -2121,7 +2121,18 @@
             const enabledCount = all.filter(p => p.enabled).length;
             const disabledCount = all.length - enabledCount;
 
-            let html = '<div class="ghhelper-settings-section" data-ghhelper-nt="1">';
+            // 失效提示条：默认 Raw 加速源被禁用/删除时显示
+            const defaultId = StorageManager.getDefaultRawProxyId();
+            const actualProxy = ProxyManager.getDefaultRawProxy();
+            let warningBanner = '';
+            if (defaultId && actualProxy && defaultId !== actualProxy.id) {
+                warningBanner = '<div class="ghhelper-warning-banner" data-ghhelper-nt="1">'
+                    + '<span data-ghhelper-nt="1">⚠️ 当前默认 ☁ 加速源已禁用或失效，已回退到 [' + this._escapeHtml(actualProxy.name) + ']</span>'
+                    + '<button data-clear-default="1" data-ghhelper-nt="1">清除默认</button>'
+                    + '</div>';
+            }
+
+            let html = warningBanner + '<div class="ghhelper-settings-section" data-ghhelper-nt="1">';
             html += '<h4 data-ghhelper-nt="1" style="margin:0 0 10px">加速源管理</h4>';
 
             // 第一行：搜索框 + 操作按钮
@@ -2199,6 +2210,16 @@
                 StorageManager.setMaxDisplay(parseInt(this.value));
                 DOMRenderer.reprocessAll();
             });
+
+            // 失效提示条"清除默认"按钮
+            const clearDefaultBtn = body.querySelector('[data-clear-default]');
+            if (clearDefaultBtn) {
+                clearDefaultBtn.addEventListener('click', () => {
+                    StorageManager.clearDefaultRawProxyId();
+                    this.renderTab('proxies');
+                    DOMRenderer.reprocessFileQuickDownload();
+                });
+            }
         },
 
         _renderChipRow() {
