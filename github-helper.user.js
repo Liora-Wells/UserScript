@@ -2989,6 +2989,7 @@
                             if (portal) {
                                 DOMRenderer.processCloneButtons(portal);
                                 DOMRenderer.processSSHButtons(portal);
+                                DOMRenderer.processDownloadZIP(portal);
                             }
                             return;
                         }
@@ -3000,8 +3001,10 @@
                             if (target.querySelector('input[value^="https:"]')) {
                                 DOMRenderer._clearSshRows();
                                 DOMRenderer.processCloneButtons(portal);
+                                DOMRenderer.processDownloadZIP(portal);
                             } else if (target.querySelector('input[value^="git@"]')) {
                                 DOMRenderer._clearCloneRows();
+                                DOMRenderer._clearDownloadZIPRows();
                                 DOMRenderer.processSSHButtons(portal);
                             }
                             return;
@@ -3013,6 +3016,31 @@
                         LOG('全局 observer: raw-button 新增');
                         DOMRenderer.processRawButtons();
                         return;
+                    }
+
+                    // ===== 全局：检测文件列表新增（☁ 悬浮图标注入）=====
+                    if (StorageManager.isFeatureEnabled('fileQuickDownload')) {
+                        // 旧版 GitHub：div.Box-row 新增
+                        if (target.tagName === 'DIV' && target.classList.contains('Box-row')) {
+                            LOG('全局 observer: Box-row 新增');
+                            DOMRenderer.processFileQuickDownload();
+                            return;
+                        }
+                        // 新版 React：react-directory-row 新增
+                        if (target.tagName === 'DIV' && target.className && target.className.indexOf('react-directory-row') !== -1) {
+                            LOG('全局 observer: react-directory-row 新增');
+                            DOMRenderer.processFileQuickDownload();
+                            return;
+                        }
+                        // 文件图标 svg.octicon-file / svg.color-fg-muted 新增
+                        if (target.tagName === 'SVG' && (
+                            target.classList.contains('octicon-file') ||
+                            target.classList.contains('color-fg-muted')
+                        )) {
+                            LOG('全局 observer: 文件图标 SVG 新增');
+                            DOMRenderer.processFileQuickDownload();
+                            return;
+                        }
                     }
 
                     // ===== 全局：检测 relative-time 新增（时间替换） =====
