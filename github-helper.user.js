@@ -1778,6 +1778,10 @@
             this.processRawButtons();
             // Clone/SSH：清理加速源行和标记，等待下次打开下拉菜单时重新处理
             this._clearAllCloneSshRows();
+            // Download ZIP：清理加速源行，等待下次打开下拉菜单时重新处理
+            this._clearDownloadZIPRows();
+            // ☁ 悬浮图标：标记失效，下次悬停时重建
+            this.reprocessFileQuickDownload();
         },
 
         reprocessAll() {
@@ -1792,6 +1796,10 @@
             });
             // 同步刷新 Raw/Clone/SSH 加速按钮
             this.reprocessRawCloneSSH();
+            // Download ZIP 加速源行清理（下次菜单打开时重新注入）
+            this._clearDownloadZIPRows();
+            // ☁ 悬浮图标标记失效（下次悬停时重建）
+            this.reprocessFileQuickDownload();
         },
 
         findTagName(detailsElem) {
