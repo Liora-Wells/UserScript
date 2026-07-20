@@ -702,6 +702,87 @@
 .ghhelper-select{padding:4px 8px;font-size:12px;border:1px solid var(--color-border-default,#30363d);border-radius:6px;background-color:var(--color-canvas-default,#0d1117);color:var(--fgColor-default,var(--color-fg-default))}
 .ghhelper-gear-btn{position:fixed;right:24px;top:80px;z-index:9998;width:36px;height:36px;border-radius:50%;border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.2);opacity:0.7;transition:opacity 0.15s}
 .ghhelper-gear-btn:hover{opacity:1;background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
+
+/* ☁ 悬浮图标 */
+.fileDownLink.ghhelper-file-down-link {
+    margin-left: 4px;
+    margin-right: 0;
+    vertical-align: middle;
+    color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+    cursor: pointer;
+    display: none;
+}
+.fileDownLink.ghhelper-file-down-link:hover {
+    color: var(--fgColor-accent-emphasis, var(--color-accent-emphasis, #0550ae));
+}
+.fileDownLink.ghhelper-file-down-link svg {
+    vertical-align: middle;
+}
+
+/* download 分组说明 */
+.ghhelper-group-hint {
+    font-size: 11px;
+    color: var(--fgColor-muted, var(--color-fg-muted));
+    padding: 6px 10px;
+    margin: 4px 0 8px 0;
+    background: var(--bgColor-attention-subtle, var(--color-attention-subtle, #fff8c5));
+    border: 1px solid var(--borderColor-attention, var(--color-attention-emphasis, #d4a72c));
+    border-radius: 6px;
+    line-height: 1.5;
+}
+
+/* 失效提示条 */
+.ghhelper-warning-banner {
+    background: var(--bgColor-attention-subtle, var(--color-attention-subtle, #fff8c5));
+    color: var(--fgColor-attention, var(--color-attention-fg, #9a6700));
+    border: 1px solid var(--borderColor-attention, var(--color-attention-emphasis, #d4a72c));
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+}
+.ghhelper-warning-banner button {
+    background: transparent;
+    color: inherit;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+/* "设为默认 ☁" 单选按钮容器 */
+.ghhelper-default-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--fgColor-muted, var(--color-fg-muted));
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+}
+.ghhelper-default-radio:hover {
+    background: var(--bgColor-subtle, var(--color-canvas-subtle, #f6f8fa));
+}
+.ghhelper-default-radio input[type="radio"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+/* 默认源卡片高亮 */
+.ghhelper-proxy-card.ghhelper-proxy-card-default {
+    border-color: var(--borderColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+    box-shadow: 0 0 0 1px var(--borderColor-accent-emphasis, var(--color-accent-emphasis, #0969da));
+}
+.ghhelper-proxy-card-default .ghhelper-default-radio {
+    color: var(--fgColor-accent, var(--color-accent-fg, #0969da));
+    font-weight: 600;
+}
 `;
             document.head.appendChild(style);
         },
