@@ -551,6 +551,9 @@
         return !!n.closest('[data-ghhelper-element]');
     };
 
+    // ☁ 悬浮图标 SVG（沿用参考脚本 docs/Github 增强 - 高速下载.js）
+    const SVG_CLOUD = '<svg class="octicon octicon-cloud-download" aria-hidden="true" height="16" width="16" viewBox="0 0 16 16"><path d="M9 12h2l-3 3-3-3h2V7h2v5zm3-8c0-.44-.91-3-4.5-3C5.08 1 3 2.92 3 5 1.02 5 0 6.52 0 8c0 1.53 1 3 3 3h3V9.7H3C1.38 9.7 1.3 8.28 1.3 8c0-.17.05-1.7 1.7-1.7h1.3V5c0-1.39 1.56-2.7 3.2-2.7 2.55 0 3.13 1.55 3.2 1.8v1.2H12c.81 0 2.7.22 2.7 2.2 0 2.09-2.25 2.2-2.7 2.2h-2V11h2c2.08 0 4-1.16 4-3.5C16 5.06 14.08 4 12 4z"></path></svg>';
+
     const DOMRenderer = {
         _scrollTopBtn: null,
 
@@ -1310,6 +1313,51 @@
                 const xb = row.querySelector('.XIU2-RS');
                 if (xb) xb.style.display = 'none';
             });
+        },
+
+        // Download ZIP 加速：在 Code 下拉菜单 Download ZIP 项后追加多个加速源菜单项
+        // 样式完全照搬 docs/Github 增强 - 高速下载.js：每个加速源克隆为独立 li，全部平铺
+        processDownloadZIP(target) {
+            if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
+            const html = target.querySelector('ul[class^=prc-ActionList-ActionList-]>li:last-child');
+            if (!html) return;
+            const hrefEl = html.querySelector('a[href^="/"][href$=".zip"]');
+            if (!hrefEl || !hrefEl.getAttribute('href')) return;
+
+            // 幂等检查：若已注入则跳过
+            if (html.nextElementSibling && html.nextElementSibling.dataset.ghhelperZipRow === '1') return;
+
+            const href = hrefEl.getAttribute('href');
+            const disp = ProxyManager.getDisplayProxies('download');
+            const all = [...disp.pinned, ...disp.overflow];
+            if (!all.length) return;
+
+            let frag = '';
+            all.forEach(p => {
+                const url = ProxyManager.buildUrl(p, href, 'download');
+                const clone = html.cloneNode(true);
+                const a = clone.querySelector('a[href$=".zip"]');
+                const s = clone.querySelector('span[id]');
+                if (!a || !s) return;
+                a.href = url;
+                a.target = '_blank';
+                a.rel = 'noreferrer noopener nofollow';
+                a.title = (p.desc || '') + '\n\n提示：如果不想要点击链接在前台打开空白新标签页（一闪而过影响体验），\n可以 [鼠标中键] 或 [Ctrl+鼠标左键] 点击加速链接即可在后台打开新标签页！';
+                s.textContent = 'Download ZIP ' + p.name;
+                clone.setAttribute('data-ghhelper-element', '1');
+                clone.setAttribute('data-ghhelper-nt', '1');
+                clone.setAttribute('data-ghhelper-zip-row', '1');
+                frag += clone.outerHTML;
+            });
+
+            html.insertAdjacentHTML('afterend', frag);
+            LOG('  processDownloadZIP: 已添加 ' + all.length + ' 个 Download ZIP 加速源');
+        },
+
+        // 清理 Download ZIP 加速源行
+        _clearDownloadZIPRows() {
+            const scope = document.getElementById('__primerPortalRoot__') || document;
+            scope.querySelectorAll('li[data-ghhelper-zip-row="1"]').forEach(e => e.remove());
         },
 
         // Raw 加速：在文件查看页 Raw 按钮后追加一串加速按钮
