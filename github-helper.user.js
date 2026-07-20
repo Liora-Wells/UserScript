@@ -12,14 +12,18 @@
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_openInTab
+// @grant        GM_setClipboard
+// @grant        window.onurlchange
+// @sandbox      JavaScript
 // @connect      api.github.com
 // @license      MIT
+// @run-at       document-end
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const DEBUG = true;
+    const DEBUG = false;
     const LOG = (...args) => { if (DEBUG) console.log('[GH助手]', ...args); };
     const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
     const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
@@ -513,26 +517,10 @@
     // 4. DOM 渲染器 (DOMRenderer)
     // ============================================================
 
-    // 模块级辅助：判断 mutation 是否仅由脚本自身元素引起（避免 observer 无限循环）
-    // 快速短路：只要有任何非脚本元素变化就返回 false
-    const isScriptMutation = (mutations) => {
-        for (const m of mutations) {
-            // 属性变化/文本变化不视为脚本自身变化，但也不触发处理（由调用方决定）
-            if (m.type === 'attributes') continue;
-            for (const n of m.addedNodes) {
-                if (n.nodeType !== 1) continue;
-                if (!n.hasAttribute('data-ghhelper-element') && !n.closest('[data-ghhelper-element]')) {
-                    return false;
-                }
-            }
-            for (const n of m.removedNodes) {
-                if (n.nodeType !== 1) continue;
-                if (!n.hasAttribute('data-ghhelper-element') && !n.closest('[data-ghhelper-element]')) {
-                    return false;
-                }
-            }
-        }
-        return true;
+    // 辅助：判断节点是否为脚本自身元素或其子节点（用于 observer 过滤）
+    const isScriptNode = (n) => {
+        return n && n.nodeType === 1 &&
+            (n.hasAttribute('data-ghhelper-element') || !!n.closest('[data-ghhelper-element]'));
     };
 
     const DOMRenderer = {
@@ -844,12 +832,29 @@
             let retryTimer = null;
             let isRefreshing = false;
 
-            const refresh = (mutations) => {
-                if (!details.open || isRefreshing) return;
-                if (mutations && isScriptMutation(mutations)) {
-                    LOG('  refresh 跳过: 仅脚本自身元素变化');
-                    return;
+            // 检查 mutations 是否包含需要处理的新内容（下载链接/include-fragment/Box-row）
+            // 跳过脚本自身元素的变化，避免无限循环
+            const hasMeaningfulChange = (mutations) => {
+                for (const m of mutations) {
+                    for (const n of m.addedNodes) {
+                        if (n.nodeType !== 1) continue;
+                        if (isScriptNode(n)) continue;
+                        // 新增的下载链接
+                        if (n.tagName === 'A') {
+                            const href = n.getAttribute('href') || '';
+                            if (href.indexOf('/releases/download/') > -1 || href.indexOf('/archive/') > -1) return true;
+                        }
+                        // 新增的 include-fragment（异步加载容器）或 Box-row（资产列表项）
+                        if (n.tagName === 'INCLUDE-FRAGMENT' || (n.tagName === 'LI' && n.classList.contains('Box-row'))) return true;
+                        // 容器内含下载链接/fragment/Box-row
+                        if (n.querySelector && n.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],include-fragment,li.Box-row')) return true;
+                    }
                 }
+                return false;
+            };
+
+            const refresh = (skipMutationCheck) => {
+                if (!details.open || isRefreshing) return;
                 isRefreshing = true;
                 LOG('  refresh details 内容, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
                 if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
@@ -862,7 +867,7 @@
                     retryTimer = setTimeout(() => {
                         retryTimer = null;
                         LOG('  refresh 延迟重试');
-                        refresh(null);
+                        refresh(true);
                     }, 800);
                 }
             };
@@ -871,19 +876,16 @@
                 // 只处理外层 details 自身的 toggle，忽略内层（签名/校验 wrapper）冒泡
                 if (e.target !== details) return;
                 LOG('  toggle 事件触发, details.open=' + details.open);
-                if (details.open) refresh(null);
+                if (details.open) refresh(true);
             });
 
             // GitHub 的 Assets 内容是动态加载的，需要监听子树变化
+            // 仅在有有意义的新内容时才触发 refresh，避免脚本自身 DOM 变化导致无限循环
             const observer = new MutationObserver((mutations) => {
                 if (isRefreshing) return;
-                // 跳过仅涉及脚本自身元素的变化（如签名/校验 wrapper 的展开/折叠）
-                if (isScriptMutation(mutations)) {
-                    LOG('  MutationObserver 跳过: 仅脚本自身元素变化');
-                    return;
-                }
-                LOG('  details MutationObserver 触发, open=' + details.open + ', mutations=' + mutations.length);
-                if (details.open) refresh(mutations);
+                if (!hasMeaningfulChange(mutations)) return;
+                LOG('  details MutationObserver 触发, open=' + details.open);
+                if (details.open) refresh(true);
             });
             observer.observe(details, { childList: true, subtree: true });
             LOG('  details MutationObserver 已绑定');
@@ -892,7 +894,7 @@
             // 否则首次进入已展开的 Release 时，需等 toggle/mutation 才会触发分组与着色
             if (details.open) {
                 LOG('  details 已展开，立即执行首次 refresh');
-                refresh(null);
+                refresh(true);
             }
         },
 
@@ -2450,78 +2452,74 @@
     // 9. 初始化入口
     // ============================================================
 
-    let _initRetryCount = 0;
-    const MAX_RETRY = 5;
-    const RETRY_DELAY = 800;
-    let _initTimer = null;
-    let _initDone = false;
+    // 一次性初始化：注册菜单、注入 CSS、注入设置按钮
+    // 这些操作只需执行一次，多次调用也不会重复（内部有幂等检查）
+    let _oneTimeSetupDone = false;
+    function oneTimeSetup() {
+        if (_oneTimeSetupDone) return;
+        _oneTimeSetupDone = true;
+        StorageManager.initProxies();
+        DOMRenderer.injectCSS();
+        DOMRenderer.injectGearButton();
 
-    function init() {
-        LOG('init() 被调用, _initDone=' + _initDone + ', pathname=' + window.location.pathname);
-        // 首次调用立即执行，后续调用防抖（避免 urlchange/turbo:load 频繁触发）
-        if (!_initDone) {
-            _initDone = true;
-            LOG('init() 首次执行');
-            _doInit();
-            return;
+        if (!window.__ghhelperDropdownBound) {
+            window.__ghhelperDropdownBound = true;
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.ghhelper-proxy-dropdown')) {
+                    document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                        el.classList.remove('ghhelper-dropdown-open');
+                    });
+                }
+            });
         }
-        // 后续调用防抖
-        if (_initTimer) clearTimeout(_initTimer);
-        _initTimer = setTimeout(() => {
-            _initTimer = null;
-            LOG('init() 防抖后执行');
-            _doInit();
-        }, 300);
+
+        if (StorageManager.isFeatureEnabled('scrollToTop')) {
+            DOMRenderer.injectScrollToTop();
+        }
+
+        if (StorageManager.isFeatureEnabled('replaceTime')) {
+            DOMRenderer.replaceRelativeTimes();
+            DOMRenderer.startTimeObserver();
+        }
     }
 
-    function _doInit() {
-        try {
-            const t0 = performance.now();
-            LOG('init 调用, pathname:', window.location.pathname);
-            StorageManager.initProxies();
-            DOMRenderer.injectCSS();
-            DOMRenderer.injectGearButton();
-            const t1 = performance.now();
+    // 根据当前页面 pathname 分发到对应处理函数
+    // 每个处理函数内部都有幂等检查，可安全重复调用
+    function routeByPathname() {
+        const pathname = window.location.pathname;
+        LOG('routeByPathname, pathname:', pathname);
 
-            if (!window.__ghhelperDropdownBound) {
-                window.__ghhelperDropdownBound = true;
-                document.addEventListener('click', function (e) {
-                    if (!e.target.closest('.ghhelper-proxy-dropdown')) {
-                        document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
-                            el.classList.remove('ghhelper-dropdown-open');
-                        });
-                    }
-                });
-            }
-
-            if (StorageManager.isFeatureEnabled('scrollToTop')) {
-                DOMRenderer.injectScrollToTop();
-            }
-
-            if (StorageManager.isFeatureEnabled('replaceTime')) {
-                DOMRenderer.replaceRelativeTimes();
-                DOMRenderer.startTimeObserver();
-            }
-
+        // Release 页面：处理 details/资产/更新日志
+        if (/^\/[^/]+\/[^/]+\/releases/.test(pathname)) {
             processAllDetails();
-            const t2 = performance.now();
-            DOMRenderer.processRawButtons();
-            const t3 = performance.now();
-            // 临时禁用 observer 进行性能排查
-            // startDetailsObserver();
-            // startPortalObserver();
-            const t4 = performance.now();
-            LOG('init 耗时: total=' + (t4-t0).toFixed(1) + 'ms, gear=' + (t1-t0).toFixed(1) + 'ms, details=' + (t2-t1).toFixed(1) + 'ms, raw=' + (t3-t2).toFixed(1) + 'ms, observers=' + (t4-t3).toFixed(1) + 'ms');
+            return;
+        }
 
-            if (_initRetryCount < MAX_RETRY) {
-                _initRetryCount++;
-                setTimeout(() => {
-                    LOG('延迟重试 processAllDetails, 第', _initRetryCount, '次');
-                    processAllDetails();
-                    DOMRenderer.processRawButtons();
-                    _initRetryCount = 0;
-                }, RETRY_DELAY);
+        // 仓库主页：处理 Clone/SSH 加速源
+        // 通过 __primerPortalRoot__ 检测（Code 下拉菜单打开时才会有）
+        if (document.querySelector('#repository-container-header:not([hidden])')) {
+            const portal = document.getElementById('__primerPortalRoot__');
+            if (portal) {
+                DOMRenderer.processCloneButtons(portal);
+                DOMRenderer.processSSHButtons(portal);
             }
+            return;
+        }
+
+        // 文件查看页：处理 Raw 加速按钮
+        // processRawButtons 内部会检查 raw-button 是否存在
+        DOMRenderer.processRawButtons();
+    }
+
+    // 初始化入口（urlchange / 首次加载 / turbo:load 调用）
+    function init() {
+        try {
+            oneTimeSetup();
+            routeByPathname();
+            // 延迟再处理一次，规避 GitHub SPA 异步渲染
+            setTimeout(() => {
+                routeByPathname();
+            }, 1500);
         } catch (e) {
             LOG('init 异常:', e.message);
         }
@@ -2568,127 +2566,149 @@
         LOG('  匹配到 Assets 的 details:', assetCount, '个');
     }
 
-    // 使用 URL 变化驱动初始化，不使用全局 body MutationObserver
-    // 只有在 Release 页面才启动 details observer
-    let _detailsObserver = null;
+    // ============================================================
+    // 10. 全局 MutationObserver（参考 Github 增强 - 高速下载.js 架构）
+    // ============================================================
+    // 一个全局 observer 监听 document 的 childList+subtree
+    // 回调中根据 pathname 分流，精确匹配 addedNodes 的 tagName/dataset/className
+    // 不使用 isScriptMutation 过滤，因为每个处理函数内部都有幂等检查
+    // 每个处理函数（processAllDetails/processCloneButtons 等）内部都会检查目标元素是否已存在
 
-    function startDetailsObserver() {
-        // 先断开旧的 observer
-        if (_detailsObserver) {
-            _detailsObserver.disconnect();
-            _detailsObserver = null;
-        }
+    let _globalObserverStarted = false;
+    function startGlobalObserver() {
+        if (_globalObserverStarted) return;
+        _globalObserverStarted = true;
 
-        // 非 Release 页面不启动 observer
-        if (!/^\/[^/]+\/[^/]+\/releases/.test(window.location.pathname)) return;
+        const callback = (mutationsList) => {
+            const pathname = location.pathname;
 
-        let debounceTimer = null;
-        _detailsObserver = new MutationObserver((mutations) => {
-            // 过滤脚本自身的 DOM 变化
-            if (isScriptMutation(mutations)) return;
-            // 检查是否有未处理的 details（快速短路）
-            let hasNewDetails = false;
-            for (const m of mutations) {
-                for (const n of m.addedNodes) {
-                    if (n.nodeType === 1 && n.tagName === 'DETAILS') { hasNewDetails = true; break; }
-                    if (n.nodeType === 1 && n.querySelector && n.querySelector('details')) { hasNewDetails = true; break; }
+            // Release 页面：检测 Box 元素新增（GitHub 异步加载 Release 资产列表）
+            if (pathname.indexOf('/releases') > -1) {
+                for (const mutation of mutationsList) {
+                    for (const target of mutation.addedNodes) {
+                        if (target.nodeType !== 1) continue;
+                        // GitHub Release 资产列表容器特征
+                        if (target.tagName === 'DIV' && target.dataset.viewComponent === 'true' && target.classList[0] === 'Box') {
+                            LOG('全局 observer: Release Box 新增，触发 processAllDetails');
+                            processAllDetails();
+                            return;
+                        }
+                        // 兜底：新增的 details 元素（部分 Release 结构）
+                        if (target.tagName === 'DETAILS' || (target.querySelector && target.querySelector('details'))) {
+                            LOG('全局 observer: details 新增，触发 processAllDetails');
+                            processAllDetails();
+                            return;
+                        }
+                    }
                 }
-                if (hasNewDetails) break;
-            }
-            if (!hasNewDetails) return;
-            if (debounceTimer) return;
-            debounceTimer = setTimeout(() => {
-                debounceTimer = null;
-                LOG('MutationObserver 触发 processAllDetails');
-                processAllDetails();
-            }, 300);
-        });
-        _detailsObserver.observe(document.body, { childList: true, subtree: true });
-        LOG('Details MutationObserver 已启动 (Release 页面)');
-    }
-
-    // 监听 Code 下拉菜单的 portal，处理 Clone/SSH 加速源注入
-    // 策略：监听 portal 的直接子节点变化（而非 subtree），只在菜单打开/切换时触发
-    function startPortalObserver() {
-        const tryStart = () => {
-            const portal = document.getElementById('__primerPortalRoot__');
-            if (!portal) {
-                setTimeout(tryStart, 1000);
                 return;
             }
-            if (portal.dataset.ghhelperObserved === '1') return;
-            portal.dataset.ghhelperObserved = '1';
 
-            let debounceTimer = null;
+            // 仓库主页：检测 Code 下拉菜单的 portal 内容变化
+            if (document.querySelector('#repository-container-header:not([hidden])')) {
+                for (const mutation of mutationsList) {
+                    for (const target of mutation.addedNodes) {
+                        if (target.nodeType !== 1) continue;
+                        // 跳过脚本自身元素
+                        if (isScriptNode(target)) continue;
 
-            const processPortalContent = () => {
-                // 同时尝试处理两种类型的 Clone URL
-                // processCloneButtons/processSSHButtons 内部会检查 input 是否存在
-                DOMRenderer.processCloneButtons(portal);
-                DOMRenderer.processSSHButtons(portal);
-            };
+                        // Code 下拉菜单打开时的 portal 子元素
+                        if (target.tagName === 'DIV' && target.parentElement && target.parentElement.id === '__primerPortalRoot__') {
+                            LOG('全局 observer: portal 子元素新增');
+                            const portal = document.getElementById('__primerPortalRoot__');
+                            if (portal) {
+                                DOMRenderer.processCloneButtons(portal);
+                                DOMRenderer.processSSHButtons(portal);
+                            }
+                            return;
+                        }
 
-            // 检查是否需要处理：有 Clone/SSH input 但缺少对应的加速源行
-            const needsProcessing = () => {
-                const httpsInput = portal.querySelector('input[value^="https://"][value*="github.com"]');
-                const sshInput = portal.querySelector('input[value^="git@"][value*="github.com"]');
-                if (httpsInput && DOMRenderer._isCloneInput(httpsInput)) {
-                    // 有 HTTPS input 但没有 Clone 加速源行
-                    if (!portal.querySelector('.ghhelper-clone-row')) return true;
-                }
-                if (sshInput && DOMRenderer._isCloneInput(sshInput)) {
-                    // 有 SSH input 但没有 SSH 加速源行
-                    if (!portal.querySelector('.ghhelper-ssh-row')) return true;
-                }
-                return false;
-            };
+                        // HTTPS/SSH tab 切换：React 重新渲染的 LocalTab 容器
+                        if (target.tagName === 'DIV' && target.className && target.className.indexOf('LocalTab-module__') !== -1) {
+                            LOG('全局 observer: LocalTab 切换');
+                            const portal = document.getElementById('__primerPortalRoot__') || document;
+                            if (target.querySelector('input[value^="https:"]')) {
+                                // 切换到 HTTPS：清理旧的 SSH 加速源行，重新处理
+                                DOMRenderer._clearSshRows();
+                                DOMRenderer.processCloneButtons(portal);
+                            } else if (target.querySelector('input[value^="git@"]')) {
+                                // 切换到 SSH：清理旧的 HTTPS 加速源行，重新处理
+                                DOMRenderer._clearCloneRows();
+                                DOMRenderer.processSSHButtons(portal);
+                            }
+                            return;
+                        }
 
-            const observer = new MutationObserver((mutations) => {
-                // 过滤脚本自身的 DOM 变化，避免无限循环
-                if (isScriptMutation(mutations)) return;
-
-                // 快速检查：是否需要处理（有 input 但缺少加速源行）
-                if (!needsProcessing()) return;
-
-                // 防抖：React 重新渲染时会连续触发多次变化，等待渲染完成后再处理
-                if (debounceTimer) clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(() => {
-                    debounceTimer = null;
-                    // 再次检查（防抖期间可能已被处理）
-                    if (needsProcessing()) {
-                        LOG('Portal MutationObserver 触发');
-                        processPortalContent();
+                        // 兜底：portal 内部任何新增（初次打开可能没有 LocalTab 容器）
+                        if (target.querySelector && target.querySelector('input[value^="https:"],input[value^="git@"]')) {
+                            LOG('全局 observer: 检测到 clone input');
+                            const portal = document.getElementById('__primerPortalRoot__') || document;
+                            DOMRenderer.processCloneButtons(portal);
+                            DOMRenderer.processSSHButtons(portal);
+                            return;
+                        }
                     }
-                }, 300);
-            });
+                }
+                return;
+            }
 
-            // 监听 subtree childList（切换 tab 时 React 会重新渲染内部节点）
-            observer.observe(portal, { childList: true, subtree: true });
-            LOG('Portal MutationObserver 已启动');
+            // 文件查看页：检测 raw-button 新增
+            for (const mutation of mutationsList) {
+                for (const target of mutation.addedNodes) {
+                    if (target.nodeType !== 1) continue;
+                    if (isScriptNode(target)) continue;
+                    if (target.tagName === 'A' && target.dataset && target.dataset.testid === 'raw-button') {
+                        LOG('全局 observer: raw-button 新增');
+                        DOMRenderer.processRawButtons();
+                        return;
+                    }
+                    if (target.querySelector && target.querySelector('a[data-testid="raw-button"]')) {
+                        LOG('全局 observer: 检测到 raw-button');
+                        DOMRenderer.processRawButtons();
+                        return;
+                    }
+                }
+            }
         };
-        tryStart();
+
+        const observer = new MutationObserver(callback);
+        observer.observe(document, { childList: true, subtree: true });
+        LOG('全局 MutationObserver 已启动');
     }
+
+    // ============================================================
+    // 11. 启动入口
+    // ============================================================
 
     registerMenus();
     init();
-    document.addEventListener('turbo:load', () => { LOG('turbo:load 事件触发'); init(); });
-    document.addEventListener('pjax:end', () => { LOG('pjax:end 事件触发'); init(); });
+    startGlobalObserver();
+
+    // URL 变化监听：使用 Tampermonkey 原生 window.onurlchange
+    // 若环境不支持（非 Tampermonkey），添加 fallback
     if (window.onurlchange === undefined) {
+        // fallback：监听 popstate + 覆盖 history.pushState/replaceState
+        // 仅在 pathname 变化时触发 urlchange 事件
         let _lastPath = window.location.pathname;
         const _checkUrlChange = () => {
             const newPath = window.location.pathname;
-            LOG('URL变化检查: old=' + _lastPath + ', new=' + newPath);
             if (newPath !== _lastPath) {
                 _lastPath = newPath;
-                LOG('触发 urlchange 事件');
                 window.dispatchEvent(new Event('urlchange'));
             }
         };
-        history.pushState = (f => function () { var r = f.apply(this, arguments); _checkUrlChange(); return r; })(history.pushState);
-        history.replaceState = (f => function () { var r = f.apply(this, arguments); _checkUrlChange(); return r; })(history.replaceState);
+        const _origPushState = history.pushState;
+        const _origReplaceState = history.replaceState;
+        history.pushState = function () { const r = _origPushState.apply(this, arguments); _checkUrlChange(); return r; };
+        history.replaceState = function () { const r = _origReplaceState.apply(this, arguments); _checkUrlChange(); return r; };
         window.addEventListener('popstate', _checkUrlChange);
+        document.addEventListener('turbo:load', _checkUrlChange);
+        document.addEventListener('pjax:end', _checkUrlChange);
     }
-    window.addEventListener('urlchange', () => { LOG('urlchange 监听器触发'); init(); });
+    window.addEventListener('urlchange', () => {
+        LOG('urlchange 触发, pathname:', window.location.pathname);
+        init();
+    });
 
     LOG('=== GitHub 助手脚本加载完成, 版本 1.0.0 ===');
     LOG('  当前页面:', window.location.href);
