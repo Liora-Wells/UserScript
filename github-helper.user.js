@@ -832,28 +832,7 @@
             let retryTimer = null;
             let isRefreshing = false;
 
-            // 检查 mutations 是否包含需要处理的新内容（下载链接/include-fragment/Box-row）
-            // 跳过脚本自身元素的变化，避免无限循环
-            const hasMeaningfulChange = (mutations) => {
-                for (const m of mutations) {
-                    for (const n of m.addedNodes) {
-                        if (n.nodeType !== 1) continue;
-                        if (isScriptNode(n)) continue;
-                        // 新增的下载链接
-                        if (n.tagName === 'A') {
-                            const href = n.getAttribute('href') || '';
-                            if (href.indexOf('/releases/download/') > -1 || href.indexOf('/archive/') > -1) return true;
-                        }
-                        // 新增的 include-fragment（异步加载容器）或 Box-row（资产列表项）
-                        if (n.tagName === 'INCLUDE-FRAGMENT' || (n.tagName === 'LI' && n.classList.contains('Box-row'))) return true;
-                        // 容器内含下载链接/fragment/Box-row
-                        if (n.querySelector && n.querySelector('a[href*="/releases/download/"],a[href*="/archive/"],include-fragment,li.Box-row')) return true;
-                    }
-                }
-                return false;
-            };
-
-            const refresh = (skipMutationCheck) => {
+            const refresh = () => {
                 if (!details.open || isRefreshing) return;
                 isRefreshing = true;
                 LOG('  refresh details 内容, groupAndSort=' + StorageManager.isFeatureEnabled('groupAndSort') + ', proxyButtons=' + StorageManager.isFeatureEnabled('proxyButtons'));
@@ -867,7 +846,7 @@
                     retryTimer = setTimeout(() => {
                         retryTimer = null;
                         LOG('  refresh 延迟重试');
-                        refresh(true);
+                        refresh();
                     }, 800);
                 }
             };
@@ -876,25 +855,14 @@
                 // 只处理外层 details 自身的 toggle，忽略内层（签名/校验 wrapper）冒泡
                 if (e.target !== details) return;
                 LOG('  toggle 事件触发, details.open=' + details.open);
-                if (details.open) refresh(true);
+                if (details.open) refresh();
             });
-
-            // GitHub 的 Assets 内容是动态加载的，需要监听子树变化
-            // 仅在有有意义的新内容时才触发 refresh，避免脚本自身 DOM 变化导致无限循环
-            const observer = new MutationObserver((mutations) => {
-                if (isRefreshing) return;
-                if (!hasMeaningfulChange(mutations)) return;
-                LOG('  details MutationObserver 触发, open=' + details.open);
-                if (details.open) refresh(true);
-            });
-            observer.observe(details, { childList: true, subtree: true });
-            LOG('  details MutationObserver 已绑定');
 
             // 若 details 已展开，立即执行一次 refresh
-            // 否则首次进入已展开的 Release 时，需等 toggle/mutation 才会触发分组与着色
+            // 后续 Assets 内容异步加载由全局 MutationObserver 统一检测并触发 processAllDetails
             if (details.open) {
                 LOG('  details 已展开，立即执行首次 refresh');
-                refresh(true);
+                refresh();
             }
         },
 
@@ -1640,12 +1608,10 @@
             document.querySelectorAll('relative-time:not([data-ghhelper-time])').forEach(el => this.replaceOneTime(el));
         },
 
+        // 时间替换不再使用独立 observer（避免与全局 observer 叠加导致 CPU 飙升）
+        // 改为在 urlchange 和全局 observer 检测到 relative-time 新增时触发
         startTimeObserver() {
-            if (this._timeObserver) return;
-            this._timeObserver = new MutationObserver(() => {
-                document.querySelectorAll('relative-time:not([data-ghhelper-time])').forEach(el => this.replaceOneTime(el));
-            });
-            this._timeObserver.observe(document.body, { childList: true, subtree: true });
+            // no-op：保留函数签名以兼容旧调用，实际逻辑由全局 observer 处理
         },
 
         injectScrollToTop() {
@@ -2512,12 +2478,16 @@
     }
 
     // 初始化入口（urlchange / 首次加载 / turbo:load 调用）
+    let _routeTimer = null;
     function init() {
         try {
             oneTimeSetup();
             routeByPathname();
             // 延迟再处理一次，规避 GitHub SPA 异步渲染
-            setTimeout(() => {
+            // 清除上一次的 timer，避免 urlchange 频繁触发时堆积
+            if (_routeTimer) clearTimeout(_routeTimer);
+            _routeTimer = setTimeout(() => {
+                _routeTimer = null;
                 routeByPathname();
             }, 1500);
         } catch (e) {
@@ -2525,26 +2495,42 @@
         }
     }
 
+    // processAllDetails 的缓存状态（模块级，避免闭包累积和高频重复处理）
+    let _lastDetailsCount = 0;
+    let _lastDetailsPath = '';
+
     function processAllDetails() {
         const pathname = window.location.pathname;
-        LOG('processAllDetails 调用, pathname:', pathname);
-        if (!/^\/[^/]+\/[^/]+\/releases/.test(pathname)) {
-            LOG('  跳过: 非 releases 页面');
-            return;
-        }
+        if (!/^\/[^/]+\/[^/]+\/releases/.test(pathname)) return;
         const repoInfo = DOMRenderer.getRepoInfo();
-        if (!repoInfo) {
-            WARN('  跳过: 无法获取 repoInfo');
+        if (!repoInfo) return;
+
+        // 缓存 details 数量，避免高频触发时重复处理
+        // 仅当 details 数量变化时才执行完整处理
+        const detailsList = document.querySelectorAll('details');
+        const detailsCount = detailsList.length;
+        if (detailsCount === 0) return;
+
+        // 排除脚本自身的 wrapper details 后的数量
+        let realDetailsCount = 0;
+        for (const d of detailsList) {
+            if (!d.hasAttribute('data-ghhelper-wrapper') &&
+                !d.hasAttribute('data-ghhelper-notes-wrap') &&
+                !d.classList.contains('ghhelper-version-section')) realDetailsCount++;
+        }
+        // 数量未变且路径未变则跳过（高频触发时的快速短路）
+        if (realDetailsCount === _lastDetailsCount && _lastDetailsPath === pathname) {
+            LOG('  processAllDetails 跳过: details 数量未变 (' + realDetailsCount + ')');
             return;
         }
-        LOG('  仓库:', repoInfo.owner + '/' + repoInfo.repo);
+        _lastDetailsCount = realDetailsCount;
+        _lastDetailsPath = pathname;
+        LOG('processAllDetails 调用, pathname:', pathname, ', details 数量:', realDetailsCount);
 
         if (StorageManager.isFeatureEnabled('collapsibleNotes')) {
             DOMRenderer.processReleaseNotes();
         }
 
-        const detailsList = document.querySelectorAll('details');
-        LOG('  发现 details 元素:', detailsList.length, '个');
         let assetCount = 0;
         detailsList.forEach(details => {
             // 跳过更新日志折叠区，避免误判为 Assets 容器
@@ -2559,7 +2545,6 @@
             const isAssetsByText = summary && /Assets|资源|资产/i.test(summary.textContent);
             if (hasDownloadLink || isAssetsByText) {
                 assetCount++;
-                LOG('  处理 Assets details, hasDownloadLink=' + hasDownloadLink + ', isAssetsByText=' + isAssetsByText + ', 已处理标记:', details.dataset.ghhelperProcessed);
                 DOMRenderer.processReleaseBox(details);
             }
         });
@@ -2579,39 +2564,53 @@
         if (_globalObserverStarted) return;
         _globalObserverStarted = true;
 
+        // 全局 observer 回调：精确匹配 addedNodes 的特征，避免 expensive querySelector
+        // 找到第一个匹配即退出（return），避免遍历所有 addedNodes
+        // 处理函数内部都有幂等检查，可安全重复调用
         const callback = (mutationsList) => {
             const pathname = location.pathname;
+            const isReleasePage = pathname.indexOf('/releases') > -1;
+            const isRepoHome = !isReleasePage && document.querySelector('#repository-container-header:not([hidden])') !== null;
 
-            // Release 页面：检测 Box 元素新增（GitHub 异步加载 Release 资产列表）
-            if (pathname.indexOf('/releases') > -1) {
-                for (const mutation of mutationsList) {
-                    for (const target of mutation.addedNodes) {
-                        if (target.nodeType !== 1) continue;
+            for (const mutation of mutationsList) {
+                for (const target of mutation.addedNodes) {
+                    if (target.nodeType !== 1) continue;
+                    // 跳过脚本自身元素（快速短路，避免 expensive 查询）
+                    if (isScriptNode(target)) continue;
+
+                    // ===== Release 页面：检测资产列表容器新增 =====
+                    if (isReleasePage) {
                         // GitHub Release 资产列表容器特征
                         if (target.tagName === 'DIV' && target.dataset.viewComponent === 'true' && target.classList[0] === 'Box') {
-                            LOG('全局 observer: Release Box 新增，触发 processAllDetails');
+                            LOG('全局 observer: Release Box 新增');
                             processAllDetails();
                             return;
                         }
-                        // 兜底：新增的 details 元素（部分 Release 结构）
-                        if (target.tagName === 'DETAILS' || (target.querySelector && target.querySelector('details'))) {
-                            LOG('全局 observer: details 新增，触发 processAllDetails');
+                        // 新增的 details 元素
+                        if (target.tagName === 'DETAILS') {
+                            LOG('全局 observer: details 新增');
                             processAllDetails();
                             return;
+                        }
+                        // 新增的 include-fragment（Assets 异步加载容器）
+                        if (target.tagName === 'INCLUDE-FRAGMENT') {
+                            LOG('全局 observer: include-fragment 新增');
+                            processAllDetails();
+                            return;
+                        }
+                        // 新增的下载链接（资产展开后异步加载）
+                        if (target.tagName === 'A') {
+                            const href = target.getAttribute('href') || '';
+                            if (href.indexOf('/releases/download/') > -1 || href.indexOf('/archive/') > -1) {
+                                LOG('全局 observer: 下载链接新增');
+                                processAllDetails();
+                                return;
+                            }
                         }
                     }
-                }
-                return;
-            }
 
-            // 仓库主页：检测 Code 下拉菜单的 portal 内容变化
-            if (document.querySelector('#repository-container-header:not([hidden])')) {
-                for (const mutation of mutationsList) {
-                    for (const target of mutation.addedNodes) {
-                        if (target.nodeType !== 1) continue;
-                        // 跳过脚本自身元素
-                        if (isScriptNode(target)) continue;
-
+                    // ===== 仓库主页：检测 Code 下拉菜单 portal 内容变化 =====
+                    if (isRepoHome) {
                         // Code 下拉菜单打开时的 portal 子元素
                         if (target.tagName === 'DIV' && target.parentElement && target.parentElement.id === '__primerPortalRoot__') {
                             LOG('全局 observer: portal 子元素新增');
@@ -2628,44 +2627,27 @@
                             LOG('全局 observer: LocalTab 切换');
                             const portal = document.getElementById('__primerPortalRoot__') || document;
                             if (target.querySelector('input[value^="https:"]')) {
-                                // 切换到 HTTPS：清理旧的 SSH 加速源行，重新处理
                                 DOMRenderer._clearSshRows();
                                 DOMRenderer.processCloneButtons(portal);
                             } else if (target.querySelector('input[value^="git@"]')) {
-                                // 切换到 SSH：清理旧的 HTTPS 加速源行，重新处理
                                 DOMRenderer._clearCloneRows();
                                 DOMRenderer.processSSHButtons(portal);
                             }
                             return;
                         }
-
-                        // 兜底：portal 内部任何新增（初次打开可能没有 LocalTab 容器）
-                        if (target.querySelector && target.querySelector('input[value^="https:"],input[value^="git@"]')) {
-                            LOG('全局 observer: 检测到 clone input');
-                            const portal = document.getElementById('__primerPortalRoot__') || document;
-                            DOMRenderer.processCloneButtons(portal);
-                            DOMRenderer.processSSHButtons(portal);
-                            return;
-                        }
                     }
-                }
-                return;
-            }
 
-            // 文件查看页：检测 raw-button 新增
-            for (const mutation of mutationsList) {
-                for (const target of mutation.addedNodes) {
-                    if (target.nodeType !== 1) continue;
-                    if (isScriptNode(target)) continue;
+                    // ===== 全局：检测 raw-button 新增（文件查看页） =====
                     if (target.tagName === 'A' && target.dataset && target.dataset.testid === 'raw-button') {
                         LOG('全局 observer: raw-button 新增');
                         DOMRenderer.processRawButtons();
                         return;
                     }
-                    if (target.querySelector && target.querySelector('a[data-testid="raw-button"]')) {
-                        LOG('全局 observer: 检测到 raw-button');
-                        DOMRenderer.processRawButtons();
-                        return;
+
+                    // ===== 全局：检测 relative-time 新增（时间替换） =====
+                    if (target.tagName === 'RELATIVE-TIME' && !target.hasAttribute('data-ghhelper-time')) {
+                        DOMRenderer.replaceOneTime(target);
+                        continue;
                     }
                 }
             }
