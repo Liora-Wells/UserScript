@@ -2623,7 +2623,8 @@
                 { key: 'replaceTime', icon: '🕐', label: '精确时间替换', desc: '将"3天前"替换为"2026-07-13 14:30"', impact: '关闭以兼容中文化脚本，开启后两者可能冲突' },
                 { key: 'collapsibleNotes', icon: '📖', label: '可折叠更新日志', desc: '将更新日志包进可折叠区域', impact: 'Release 标题下方显示"更新日志"折叠栏' },
                 { key: 'proxyButtons', icon: '⚡', label: '加速下载按钮', desc: 'Release 文件、Raw、Clone、SSH 旁显示加速下载按钮', impact: '文件行右侧显示加速源按钮+下拉菜单；Raw 按钮旁加速；Code 菜单 Clone/SSH 下方加速' },
-                { key: 'scrollToTop', icon: '↑', label: '回到顶部按钮', desc: '滚动超过 300px 后显示悬浮回到顶部按钮', impact: '页面右下角悬浮箭头按钮' }
+                { key: 'scrollToTop', icon: '↑', label: '回到顶部按钮', desc: '滚动超过 300px 后显示悬浮回到顶部按钮', impact: '页面右下角悬浮箭头按钮' },
+                { key: 'fileQuickDownload', icon: '☁', label: '单文件快捷下载', desc: '在文件列表行悬停显示 ☁ 图标，点击用默认 Raw 加速源后台打开', impact: '仓库文件列表（非 /tags）鼠标悬停时显示 ☁' }
             ];
             let html = '<div class="ghhelper-settings-section"><h4>功能开关</h4>';
             items.forEach(item => {
@@ -2655,6 +2656,10 @@
                     if (this.dataset.feature === 'scrollToTop') {
                         if (this.checked) DOMRenderer.injectScrollToTop();
                         else DOMRenderer.removeScrollToTop();
+                    } else if (this.dataset.feature === 'fileQuickDownload') {
+                        // fileQuickDownload 切换时立即重建 ☁
+                        DOMRenderer._clearFileQuickDownload();
+                        if (this.checked) DOMRenderer.processFileQuickDownload();
                     }
                     // 触发重新处理
                     DOMRenderer.reprocessAll();
