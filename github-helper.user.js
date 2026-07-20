@@ -2796,13 +2796,18 @@
             return;
         }
 
-        // 仓库主页：处理 Clone/SSH 加速源
+        // 仓库主页：处理 Clone/SSH/Download ZIP 加速源
         // 通过 __primerPortalRoot__ 检测（Code 下拉菜单打开时才会有）
         if (document.querySelector('#repository-container-header:not([hidden])')) {
             const portal = document.getElementById('__primerPortalRoot__');
             if (portal) {
                 DOMRenderer.processCloneButtons(portal);
                 DOMRenderer.processSSHButtons(portal);
+                DOMRenderer.processDownloadZIP(portal);
+            }
+            // 仓库主页根目录也是文件列表，处理 ☁
+            if (StorageManager.isFeatureEnabled('fileQuickDownload')) {
+                DOMRenderer.processFileQuickDownload();
             }
             return;
         }
@@ -2810,6 +2815,11 @@
         // 文件查看页：处理 Raw 加速按钮
         // processRawButtons 内部会检查 raw-button 是否存在
         DOMRenderer.processRawButtons();
+
+        // 文件列表页（含子目录）：处理 ☁ 悬浮图标
+        if (StorageManager.isFeatureEnabled('fileQuickDownload')) {
+            DOMRenderer.processFileQuickDownload();
+        }
     }
 
     // 初始化入口（urlchange / 首次加载 / turbo:load 调用）
