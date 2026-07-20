@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub 助手
 // @namespace    https://github.com/Liora-Wells/UserScript
-// @version      1.0.0
+// @version      1.1.0
 // @description  GitHub Release 增强显示 + 多类型加速下载，兼容中文化插件
 // @author       Liora-Wells
 // @match        https://github.com/*
@@ -1295,6 +1295,13 @@
             if (splitVal.length < 2) return;
             const href_split = splitVal[1];
 
+            // 给原 input 加 git clone 前缀，与加速源行样式统一
+            // 幂等检查：rawValue 不以 "git clone " 开头时才添加
+            if (!rawValue.startsWith('git clone ')) {
+                html.value = 'git clone ' + rawValue;
+                html.setAttribute('value', html.value);
+            }
+
             const wrapperEl = html.parentElement;
             if (!wrapperEl) return;
 
@@ -1376,6 +1383,14 @@
             const splitVal = rawValue.split(':');
             if (splitVal.length < 2) return;
             const href_split = splitVal[1];
+
+            // 给原 input 加 git clone 前缀，与加速源行样式统一
+            // 幂等检查：rawValue 不以 "git clone " 开头时才添加
+            // 注意：split(':') 计算的是 href_split（不含 host 部分），加前缀不影响（前缀无冒号）
+            if (!rawValue.startsWith('git clone ')) {
+                html.value = 'git clone ' + rawValue;
+                html.setAttribute('value', html.value);
+            }
 
             const wrapperEl = html.parentElement;
             if (!wrapperEl) return;
