@@ -175,6 +175,19 @@
             this.set(STORAGE_KEYS.selectedArch, arch);
         },
 
+        // ☁ 默认 Raw 加速源 id（用于文件列表 ☁ 悬浮图标）
+        getDefaultRawProxyId() {
+            return this.get(STORAGE_KEYS.defaultRawProxyId, null);
+        },
+
+        setDefaultRawProxyId(id) {
+            this.set(STORAGE_KEYS.defaultRawProxyId, id);
+        },
+
+        clearDefaultRawProxyId() {
+            this.set(STORAGE_KEYS.defaultRawProxyId, null);
+        },
+
         // 首次安装写入种子；升级时合并新增内置源
         initProxies() {
             const existing = this.getProxies();
