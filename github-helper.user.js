@@ -354,6 +354,21 @@
             builtin.slice(remaining).forEach(p => result.overflow.push(p));
 
             return result;
+        },
+
+        // 获取默认 Raw 加速源（含回退逻辑）
+        // 1. 用户设定的默认源仍启用 → 返回该源
+        // 2. 默认源被禁用/删除 → 回退到第一个启用的 pinned
+        // 3. 无可用源 → 返回 null
+        getDefaultRawProxy() {
+            const id = StorageManager.getDefaultRawProxyId();
+            const all = this.getEnabled('raw');
+            if (id) {
+                const p = all.find(x => x.id === id);
+                if (p) return p;
+            }
+            const disp = this.getDisplayProxies('raw');
+            return disp.pinned[0] || all[0] || null;
         }
     };
 
