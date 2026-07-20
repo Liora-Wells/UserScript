@@ -2289,6 +2289,10 @@
                 html += '<span class="ghhelper-group-count" data-ghhelper-nt="1">(' + visibleCount + '/' + totalCount + ')</span>';
                 html += '<span class="ghhelper-group-enabled" data-ghhelper-nt="1">· 启用 ' + enabledCount + '</span>';
                 html += '</div>';
+                // download 分组顶部说明
+                if (g.type === 'download') {
+                    html += '<div class="ghhelper-group-hint" data-ghhelper-nt="1">💡 下载加速源同时用于 Release 文件行按钮和 Code 菜单 Download ZIP 加速</div>';
+                }
                 html += '<div class="' + bodyClass + '" data-ghhelper-nt="1">';
                 if (isEmpty) {
                     html += '<div class="ghhelper-empty-hint" data-ghhelper-nt="1">无匹配加速源</div>';
@@ -2359,6 +2363,14 @@
                         this._renderChipRow();
                         this._renderGroups();
                         DOMRenderer.reprocessAll();
+                        return;
+                    }
+                    // 默认 Raw 加速源单选
+                    const defaultRadio = e.target.closest('[data-default-proxy]');
+                    if (defaultRadio) {
+                        StorageManager.setDefaultRawProxyId(defaultRadio.dataset.defaultProxy);
+                        this.renderTab('proxies');   // 刷新所有卡片选中状态
+                        DOMRenderer.reprocessFileQuickDownload();  // 标记 ☁ 失效
                     }
                 });
                 // 表单字段输入时清除错误提示
