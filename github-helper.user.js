@@ -11,7 +11,6 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
-// @grant        GM_openInTab
 // @grant        GM_setClipboard
 // @grant        window.onurlchange
 // @sandbox      JavaScript
@@ -227,16 +226,6 @@
             return this.getAll().filter(p => p.enabled && (p.type === type || p.type === 'all'));
         },
 
-        // 自定义源 = builtIn 为 false
-        getCustom() {
-            return StorageManager.getProxies().filter(p => !p.builtIn);
-        },
-
-        // 内置源 = builtIn 为 true
-        getBuiltin() {
-            return StorageManager.getProxies().filter(p => p.builtIn);
-        },
-
         addCustom(proxy) {
             const all = StorageManager.getProxies();
             proxy.id = 'custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
@@ -430,37 +419,37 @@
             if (this.isSourceFile(name)) return { id: 'source', showTag: false };
 
             if (name.endsWith('.exe') || name.endsWith('.msi') || name.endsWith('.appx') || name.endsWith('.msix') || name.includes('-win') || name.includes('_win'))
-                return { id: 'windows', name: 'Windows', color: 'blue', showTag: true };
+                return { id: 'windows', name: 'Windows', showTag: true };
             if (name.endsWith('.dmg') || name.endsWith('.pkg') || name.endsWith('.xip') || name.endsWith('.app.tar.gz') || name.includes('-mac') || name.includes('_mac') || name.includes('darwin'))
-                return { id: 'mac', name: 'macOS', color: 'purple', showTag: true };
+                return { id: 'mac', name: 'macOS', showTag: true };
             if (name.endsWith('.apk') || name.endsWith('.aab'))
-                return { id: 'android', name: 'Android', color: 'green', showTag: true };
+                return { id: 'android', name: 'Android', showTag: true };
             if (name.endsWith('.ipa'))
-                return { id: 'ios', name: 'iOS', color: 'gray', showTag: true };
+                return { id: 'ios', name: 'iOS', showTag: true };
             if (name.endsWith('.deb'))
-                return { id: 'linux-deb', name: 'Debian', color: 'orange', showTag: true };
+                return { id: 'linux-deb', name: 'Debian', showTag: true };
             if (name.endsWith('.rpm'))
-                return { id: 'linux-rpm', name: 'RedHat', color: 'red', showTag: true };
+                return { id: 'linux-rpm', name: 'RedHat', showTag: true };
             if (name.endsWith('.appimage'))
-                return { id: 'linux-appimage', name: 'AppImage', color: 'teal', showTag: true };
+                return { id: 'linux-appimage', name: 'AppImage', showTag: true };
             if (name.endsWith('.flatpak'))
-                return { id: 'linux-flatpak', name: 'Flatpak', color: 'cyan', showTag: true };
+                return { id: 'linux-flatpak', name: 'Flatpak', showTag: true };
             if (name.endsWith('.pacman') || name.endsWith('.pkg.tar.zst') || name.endsWith('.ebuild'))
-                return { id: 'linux-arch', name: 'Arch', color: 'pink', showTag: true };
+                return { id: 'linux-arch', name: 'Arch', showTag: true };
             if (name.endsWith('.ipk') || name.endsWith('.ipk.gz'))
-                return { id: 'linux-ipk', name: 'OpenWrt', color: 'yellow', showTag: true };
+                return { id: 'linux-ipk', name: 'OpenWrt', showTag: true };
             if (name.endsWith('.snap') || name.endsWith('.snapi'))
-                return { id: 'linux-snap', name: 'Snap', color: 'indigo', showTag: true };
+                return { id: 'linux-snap', name: 'Snap', showTag: true };
             if (name.endsWith('.nupkg'))
-                return { id: 'nupkg', name: 'NuGet', color: 'purple', showTag: true };
+                return { id: 'nupkg', name: 'NuGet', showTag: true };
             if (name.endsWith('.jar'))
-                return { id: 'jar', name: 'JAR', color: 'red', showTag: true };
+                return { id: 'jar', name: 'JAR', showTag: true };
             if (name.endsWith('.whl'))
-                return { id: 'wheel', name: 'Wheel', color: 'blue', showTag: true };
+                return { id: 'wheel', name: 'Wheel', showTag: true };
             if (name.includes('-linux') || name.includes('_linux') || name.endsWith('.tar.xz') || name.endsWith('.tar.lz4'))
-                return { id: 'linux-other', name: 'Linux', color: 'amber', showTag: true };
+                return { id: 'linux-other', name: 'Linux', showTag: true };
             if (name.endsWith('.tar.gz') && (name.includes('linux') || name.includes('mac') || name.includes('win')))
-                return { id: 'linux-other', name: 'Tarball', color: 'gray', showTag: true };
+                return { id: 'linux-other', name: 'Tarball', showTag: true };
 
             return { id: 'other', showTag: false };
         },
@@ -533,16 +522,12 @@
 
     const DOMRenderer = {
         _scrollTopBtn: null,
-        _timeObserver: null,
 
         injectCSS() {
             if (document.getElementById('ghhelper-css')) return;
             const style = document.createElement('style');
             style.id = 'ghhelper-css';
             style.textContent = `
-.ghhelper-row{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;width:100%!important}
-.ghhelper-left{min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:6px;overflow:hidden}
-.ghhelper-right{flex-shrink:0;display:flex;align-items:center;gap:8px}
 .ghhelper-group-win{border-left:4px solid #0969da!important;background-color:rgba(9,105,218,0.1)!important}
 .ghhelper-group-win:hover{background-color:rgba(9,105,218,0.15)!important}
 .ghhelper-group-mac{border-left:4px solid #8250df!important;background-color:rgba(130,80,223,0.1)!important}
@@ -606,9 +591,6 @@
 .ghhelper-clone-row{margin-top:4px}
 .ghhelper-clone-row>input{cursor:pointer!important}
 .ghhelper-clone-row>input:hover{background-color:var(--color-canvas-subtle,#161b22)!important}
-.ghhelper-clone-hint{font-size:12px;color:var(--color-fg-muted,#8b949e);margin-top:4px}
-.ghhelper-version-line{flex:1;height:1px;background-color:var(--color-border-muted,#21262d)}
-.ghhelper-version-toggle{font-size:11px}
 .ghhelper-scroll-top{position:fixed;right:24px;bottom:24px;z-index:9999;width:40px;height:40px;border-radius:50%;border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.3);opacity:0;pointer-events:none;transition:opacity 0.2s ease}
 .ghhelper-scroll-top.ghhelper-visible{opacity:1;pointer-events:auto}
 .ghhelper-scroll-top:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
@@ -625,10 +607,6 @@
 .ghhelper-settings-body{flex:1;overflow-y:auto;padding:20px}
 .ghhelper-settings-section{margin-bottom:20px}
 .ghhelper-settings-section h4{margin:0 0 10px;font-size:14px}
-.ghhelper-settings-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--color-border-muted,rgba(48,54,61,0.5))}
-.ghhelper-settings-row:last-child{border-bottom:none}
-.ghhelper-settings-label{font-size:13px}
-.ghhelper-settings-desc{font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))}
 .ghhelper-toggle{position:relative;width:36px;height:20px;cursor:pointer}
 .ghhelper-toggle input{display:none}
 .ghhelper-toggle-slider{position:absolute;inset:0;background-color:var(--color-neutral-muted,rgba(110,118,129,0.4));border-radius:10px;transition:0.2s}
@@ -693,8 +671,6 @@
 .ghhelper-select{padding:4px 8px;font-size:12px;border:1px solid var(--color-border-default,#30363d);border-radius:6px;background-color:var(--color-canvas-default,#0d1117);color:var(--fgColor-default,var(--color-fg-default))}
 .ghhelper-gear-btn{position:fixed;right:24px;top:80px;z-index:9998;width:36px;height:36px;border-radius:50%;border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.2);opacity:0.7;transition:opacity 0.15s}
 .ghhelper-gear-btn:hover{opacity:1;background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
-.ghhelper-panel-section{display:none}
-.ghhelper-panel-section.active{display:block}
 `;
             document.head.appendChild(style);
         },
@@ -726,7 +702,7 @@
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url: `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
-                    headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.0' },
+                    headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.1' },
                     onload: (r) => {
                         if (r.status === 200) resolve(JSON.parse(r.responseText));
                         else reject(`API ${r.status}`);
@@ -1348,7 +1324,7 @@
                 grandparent.dataset.ghhelperCloneClickBound = '1';
                 grandparent.addEventListener('click', (e) => {
                     if (e.target.tagName === 'INPUT' && e.target.value.startsWith('git clone ')) {
-                        try { GM_setClipboard(e.target.value); } catch (err) {}
+                        GM_setClipboard(e.target.value);
                     }
                 });
             }
@@ -1437,7 +1413,7 @@
                 grandparent.dataset.ghhelperSshClickBound = '1';
                 grandparent.addEventListener('click', (e) => {
                     if (e.target.tagName === 'INPUT' && e.target.value.startsWith('git clone ')) {
-                        try { GM_setClipboard(e.target.value); } catch (err) {}
+                        GM_setClipboard(e.target.value);
                     }
                 });
             }
@@ -1750,22 +1726,13 @@
 
         _getGroupsCollapsed() {
             const def = { download: false, raw: true, clone: true, ssh: true };
-            try {
-                const val = StorageManager.get(STORAGE_KEYS.groupsCollapsed, def);
-                // 合并默认值，确保所有 key 都存在
-                return Object.assign({}, def, val || {});
-            } catch (e) {
-                ERR('SettingsPanel._getGroupsCollapsed 异常:', e);
-                return def;
-            }
+            const val = StorageManager.get(STORAGE_KEYS.groupsCollapsed, def);
+            // 合并默认值，确保所有 key 都存在
+            return Object.assign({}, def, val || {});
         },
 
         _setGroupsCollapsed(state) {
-            try {
-                StorageManager.set(STORAGE_KEYS.groupsCollapsed, state);
-            } catch (e) {
-                ERR('SettingsPanel._setGroupsCollapsed 异常:', e);
-            }
+            StorageManager.set(STORAGE_KEYS.groupsCollapsed, state);
         },
 
         _toggleGroup(type) {
@@ -1968,31 +1935,31 @@
             const counts = this._computeChipCounts(all);
             const state = this._getFilterState();
 
-            const chip = (key, dim, label, value, count, active) => {
+            const chip = (key, dim, label, count, active) => {
                 const cls = 'ghhelper-chip' + (active ? ' ghhelper-chip-active' : '');
                 return '<span class="' + cls + '" data-chip-dim="' + dim + '" data-chip-key="' + key + '" data-ghhelper-nt="1">' + label + ' <span class="ghhelper-chip-count">' + count + '</span></span>';
             };
 
             let html = '<div class="ghhelper-chip-group" data-ghhelper-nt="1">';
             // 类型维度
-            html += chip('all', 'type', '全部', 'all', counts.type.all, state.type === 'all');
-            html += chip('download', 'type', '下载', 'download', counts.type.download, state.type === 'download');
-            html += chip('raw', 'type', 'Raw', 'raw', counts.type.raw, state.type === 'raw');
-            html += chip('clone', 'type', 'Clone', 'clone', counts.type.clone, state.type === 'clone');
-            html += chip('ssh', 'type', 'SSH', 'ssh', counts.type.ssh, state.type === 'ssh');
+            html += chip('all', 'type', '全部', counts.type.all, state.type === 'all');
+            html += chip('download', 'type', '下载', counts.type.download, state.type === 'download');
+            html += chip('raw', 'type', 'Raw', counts.type.raw, state.type === 'raw');
+            html += chip('clone', 'type', 'Clone', counts.type.clone, state.type === 'clone');
+            html += chip('ssh', 'type', 'SSH', counts.type.ssh, state.type === 'ssh');
             html += '<span class="ghhelper-chip-separator" data-ghhelper-nt="1"></span>';
             // 来源维度
-            html += chip('all', 'source', '全部', 'all', counts.source.all, state.source === 'all');
-            html += chip('builtin', 'source', '内置', 'builtin', counts.source.builtin, state.source === 'builtin');
-            html += chip('custom', 'source', '自定义', 'custom', counts.source.custom, state.source === 'custom');
+            html += chip('all', 'source', '全部', counts.source.all, state.source === 'all');
+            html += chip('builtin', 'source', '内置', counts.source.builtin, state.source === 'builtin');
+            html += chip('custom', 'source', '自定义', counts.source.custom, state.source === 'custom');
             html += '<span class="ghhelper-chip-separator" data-ghhelper-nt="1"></span>';
             // 状态维度
-            html += chip('all', 'status', '全部', 'all', counts.status.all, state.status === 'all');
-            html += chip('enabled', 'status', '启用', 'enabled', counts.status.enabled, state.status === 'enabled');
-            html += chip('disabled', 'status', '禁用', 'disabled', counts.status.disabled, state.status === 'disabled');
+            html += chip('all', 'status', '全部', counts.status.all, state.status === 'all');
+            html += chip('enabled', 'status', '启用', counts.status.enabled, state.status === 'enabled');
+            html += chip('disabled', 'status', '禁用', counts.status.disabled, state.status === 'disabled');
             html += '<span class="ghhelper-chip-separator" data-ghhelper-nt="1"></span>';
             // 修改维度
-            html += chip('modified', 'modified', '已修改', 'modified', counts.modified, state.modified);
+            html += chip('modified', 'modified', '已修改', counts.modified, state.modified);
             html += '</div>';
 
             chipRowEl.innerHTML = html;
@@ -2576,8 +2543,7 @@
         let realDetailsCount = 0;
         for (const d of detailsList) {
             if (!d.hasAttribute('data-ghhelper-wrapper') &&
-                !d.hasAttribute('data-ghhelper-notes-wrap') &&
-                !d.classList.contains('ghhelper-version-section')) realDetailsCount++;
+                !d.hasAttribute('data-ghhelper-notes-wrap')) realDetailsCount++;
         }
         // 数量未变且路径未变则跳过（高频触发时的快速短路）
         if (realDetailsCount === _lastDetailsCount && _lastDetailsPath === pathname) {
@@ -2598,7 +2564,6 @@
             // 跳过脚本自身创建的 wrapper details（签名/校验折叠区），否则 wrapper 内的签名文件链接
             // 会让 hasDownloadLink=true，导致 wrapper 被误识别为 Assets，在内部又创建嵌套 wrapper
             if (details.hasAttribute('data-ghhelper-notes-wrap') ||
-                details.classList.contains('ghhelper-version-section') ||
                 details.hasAttribute('data-ghhelper-wrapper')) return;
             // 只认 details 的直接 summary，避免取到嵌套 wrapper 的 summary
             const summary = details.querySelector(':scope > summary');
@@ -2766,7 +2731,7 @@
         init();
     });
 
-    LOG('=== GitHub 助手脚本加载完成, 版本 1.0.0 ===');
+    LOG('=== GitHub 助手脚本加载完成, 版本 1.1.0 ===');
     LOG('  当前页面:', window.location.href);
     LOG('  功能状态:', JSON.stringify(StorageManager.getFeatures()));
     LOG('  GM 函数可用: getValue=' + (typeof GM_getValue !== 'undefined') + ', setValue=' + (typeof GM_setValue !== 'undefined') + ', registerMenu=' + (typeof GM_registerMenuCommand !== 'undefined'));
