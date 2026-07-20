@@ -39,7 +39,8 @@
         maxDisplay: 'ghhelper_max_display',
         selectedOS: 'ghhelper_selected_os',
         selectedArch: 'ghhelper_selected_arch',
-        groupsCollapsed: 'ghhelper_proxy_groups_collapsed'
+        groupsCollapsed: 'ghhelper_proxy_groups_collapsed',
+        defaultRawProxyId: 'ghhelper_default_raw_proxy_id'
     };
 
     const DEFAULT_FEATURES = {
@@ -48,7 +49,8 @@
         replaceTime: false,
         collapsibleNotes: true,
         proxyButtons: true,
-        scrollToTop: true
+        scrollToTop: true,
+        fileQuickDownload: true
     };
 
     const OS_OPTIONS = [
