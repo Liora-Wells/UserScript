@@ -2377,7 +2377,10 @@
             const typeLabel = p.type === 'all' ? '全部' : p.type;
             const sourceLabel = p.builtIn ? '内置' : '自定义';
             const sourceClass = p.builtIn ? 'ghhelper-proxy-tag-builtin' : 'ghhelper-proxy-tag-custom';
-            let html = '<div class="ghhelper-proxy-card" data-proxy-id="' + this._escapeHtml(p.id) + '" data-ghhelper-nt="1">';
+            // 判断是否为默认 Raw 加速源
+            const isDefaultRaw = p.type === 'raw' && p.enabled && StorageManager.getDefaultRawProxyId() === p.id;
+            const cardClass = 'ghhelper-proxy-card' + (isDefaultRaw ? ' ghhelper-proxy-card-default' : '');
+            let html = '<div class="' + cardClass + '" data-proxy-id="' + this._escapeHtml(p.id) + '" data-ghhelper-nt="1">';
             // 第一行
             html += '<div class="ghhelper-proxy-card-row1" data-ghhelper-nt="1">';
             html += '<span class="ghhelper-proxy-dot" data-ghhelper-nt="1" style="background-color:' + dotColor + '"></span>';
@@ -2393,6 +2396,14 @@
             }
             html += '</div>';
             html += '<div class="ghhelper-proxy-actions" data-ghhelper-nt="1">';
+            // Raw 类型且启用时显示"设为默认 ☁"单选按钮
+            if (p.type === 'raw' && p.enabled) {
+                html += '<label class="ghhelper-default-radio" data-ghhelper-nt="1" title="设为 ☁ 默认加速源">';
+                html += '<input type="radio" name="ghhelper-default-raw" ' + (isDefaultRaw ? 'checked' : '') + ' ';
+                html += 'data-default-proxy="' + this._escapeHtml(p.id) + '" data-ghhelper-nt="1">';
+                html += '<span data-ghhelper-nt="1">默认 ☁</span>';
+                html += '</label>';
+            }
             html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (p.enabled ? 'checked' : '') + ' data-proxy-toggle="' + this._escapeHtml(p.id) + '"><span class="ghhelper-toggle-slider"></span></label>';
             html += '<button class="ghhelper-btn" data-proxy-edit="' + this._escapeHtml(p.id) + '" data-ghhelper-nt="1">✎ 编辑</button>';
             html += '<button class="ghhelper-btn ghhelper-btn-danger" data-proxy-delete="' + this._escapeHtml(p.id) + '" data-ghhelper-nt="1">🗑 删除</button>';
