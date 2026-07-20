@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub 助手
 // @namespace    https://github.com/Liora-Wells/UserScript
-// @version      1.1.0
+// @version      1.2.0
 // @description  GitHub Release 增强显示 + 多类型加速下载，兼容中文化插件
 // @author       Liora-Wells
 // @match        https://github.com/*
@@ -11,6 +11,7 @@
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
+// @grant        GM_openInTab
 // @grant        GM_setClipboard
 // @grant        window.onurlchange
 // @sandbox      JavaScript
