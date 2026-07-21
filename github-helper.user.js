@@ -6,6 +6,8 @@
 // @author       Liora-Wells
 // @match        https://github.com/*
 // @icon         https://github.githubassets.com/pinned-octocat.svg
+// @updateURL    https://github.com/Liora-Wells/UserScript/raw/main/github-helper.user.js
+// @downloadURL  https://github.com/Liora-Wells/UserScript/raw/main/github-helper.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
