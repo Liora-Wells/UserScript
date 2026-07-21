@@ -6,7 +6,7 @@
 
 |  | 脚本名称 | 脚本功能 | 安装 |
 |---|---|---|---|
-|  | **GitHub 助手** | GitHub Release 增强显示 + 多类型加速下载（Clone / SSH / Raw / ZIP），兼容中文化插件 | [**安装**](https://github.com/Liora-Wells/UserScript/raw/main/github-helper.user.js) |
+|  | **GitHub 助手** | GitHub Release 增强显示 + 多类型加速下载（Clone / SSH / Raw / ZIP），兼容中文化插件 | [**Greasy Fork**](https://update.greasyfork.org/scripts/587965/GitHub%20%E5%8A%A9%E6%89%8B.user.js) \| [**GitHub Raw**](https://github.com/Liora-Wells/UserScript/raw/main/github-helper.user.js) |
 
 > **Note**
 > *脚本列表会随心补充，可能时多时少~*
