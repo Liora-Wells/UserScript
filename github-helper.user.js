@@ -1348,8 +1348,14 @@
             const all = [...disp.pinned, ...disp.overflow];
             if (!all.length) return;
 
+            // 优先展示前 N 个为独立 li，其余收入下拉
+            const maxDisplay = StorageManager.getMaxDisplay();
+            const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
+            const pinned = all.slice(0, maxPinned);
+            const overflow = all.slice(maxPinned);
+
             let frag = '';
-            all.forEach(p => {
+            pinned.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href, 'download');
                 const clone = html.cloneNode(true);
                 const a = clone.querySelector('a[href$=".zip"]');
@@ -1366,8 +1372,73 @@
                 frag += clone.outerHTML;
             });
 
-            html.insertAdjacentHTML('afterend', frag);
-            LOG('  processDownloadZIP: 已添加 ' + all.length + ' 个 Download ZIP 加速源');
+            // 其余收入下拉菜单 li（用 insertAdjacentElement 保留事件监听器）
+            let dropdownLi = null;
+            let dropA = null;
+            if (overflow.length) {
+                dropdownLi = html.cloneNode(true);
+                dropA = dropdownLi.querySelector('a[href$=".zip"]');
+                const dropS = dropdownLi.querySelector('span[id]');
+                if (dropA && dropS) {
+                    dropA.href = 'javascript:void(0)';
+                    dropA.removeAttribute('target');
+                    dropA.removeAttribute('rel');
+                    dropA.style.cursor = 'pointer';
+                    dropS.textContent = '更多加速 ▼';
+                    dropdownLi.setAttribute('data-ghhelper-element', '1');
+                    dropdownLi.setAttribute('data-ghhelper-nt', '1');
+                    dropdownLi.setAttribute('data-ghhelper-zip-row', '1');
+                    // 添加 ghhelper-proxy-dropdown 类以复用 CSS（菜单显示/隐藏由 .ghhelper-dropdown-open 控制）
+                    dropdownLi.classList.add('ghhelper-proxy-dropdown');
+                    // 覆盖 display，避免 inline-flex 破坏 li 的菜单布局
+                    dropdownLi.style.display = 'list-item';
+                    dropdownLi.style.position = 'relative';
+
+                    const dm = document.createElement('div');
+                    dm.className = 'ghhelper-proxy-dropdown-menu';
+                    dm.setAttribute('data-ghhelper-element', '1');
+                    dm.setAttribute('data-ghhelper-nt', '1');
+                    overflow.forEach(p => {
+                        const url = ProxyManager.buildUrl(p, href, 'download');
+                        const lk = document.createElement('a');
+                        lk.className = 'ghhelper-proxy-menu-item';
+                        lk.href = url;
+                        lk.target = '_blank';
+                        lk.rel = 'noreferrer noopener nofollow';
+                        lk.setAttribute('data-ghhelper-nt', '1');
+                        lk.textContent = p.name;
+                        lk.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '');
+                        dm.appendChild(lk);
+                    });
+
+                    dropdownLi.appendChild(dm);
+                } else {
+                    dropdownLi = null;
+                }
+            }
+
+            // 先批量插入平铺 li
+            if (frag) html.insertAdjacentHTML('afterend', frag);
+            // 再单独插入下拉 li（保留事件监听器）
+            if (dropdownLi) {
+                // 找到平铺 li 的最后一个（如果有），将下拉 li 插入其后；否则插入到原 li 之后
+                const pinnedLis = html.parentElement.querySelectorAll('li[data-ghhelper-zip-row="1"]');
+                const lastPinned = pinnedLis.length ? pinnedLis[pinnedLis.length - 1] : html;
+                lastPinned.insertAdjacentElement('afterend', dropdownLi);
+
+                // 点击触发器切换菜单（复用外层 dropA 引用，避免重复查询失效）
+                if (dropA) {
+                    dropA.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                            if (el !== dropdownLi) el.classList.remove('ghhelper-dropdown-open');
+                        });
+                        dropdownLi.classList.toggle('ghhelper-dropdown-open');
+                    });
+                }
+            }
+            LOG('  processDownloadZIP: 已添加 ' + all.length + ' 个 Download ZIP 加速源, 平铺=' + pinned.length + ', 下拉=' + overflow.length);
         },
 
         // 清理 Download ZIP 加速源行
@@ -1499,8 +1570,15 @@
                 hint.textContent += ' (点击文字可直接复制)';
             }
 
-            // 克隆原 input，生成加速源行
-            all.forEach(p => {
+            // 优先展示前 N 个为独立行，其余收入下拉
+            const maxDisplay = StorageManager.getMaxDisplay();
+            const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
+            const pinned = all.slice(0, maxPinned);
+            const overflow = all.slice(maxPinned);
+
+            // 平铺前 N 个：依次追加到上一次插入的元素之后，保持正序
+            let lastInserted = wrapperEl;
+            pinned.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'clone');
                 const inputClone = html.cloneNode(false);
                 inputClone.removeAttribute('data-ghhelper-clone-processed');
@@ -1519,21 +1597,81 @@
                 row.style.marginTop = '4px';
                 row.appendChild(inputClone);
 
-                wrapperEl.insertAdjacentElement('afterend', row);
+                lastInserted.insertAdjacentElement('afterend', row);
+                lastInserted = row;
             });
+
+            // 其余收入下拉菜单（克隆 input 行样式，但放在下拉菜单内）
+            if (overflow.length) {
+                const ddRow = document.createElement('div');
+                ddRow.className = 'ghhelper-clone-row ' + wrapperEl.className;
+                ddRow.setAttribute('data-ghhelper-element', '1');
+                ddRow.setAttribute('data-ghhelper-nt', '1');
+                ddRow.style.marginTop = '4px';
+                ddRow.style.position = 'relative';
+
+                const dd = document.createElement('span');
+                dd.className = 'ghhelper-proxy-dropdown';
+                dd.setAttribute('data-ghhelper-element', '1');
+                dd.setAttribute('data-ghhelper-nt', '1');
+
+                const db = document.createElement('a');
+                db.className = 'ghhelper-proxy-btn';
+                db.textContent = '更多 ▼';
+                db.href = 'javascript:void(0)';
+                db.setAttribute('data-ghhelper-nt', '1');
+                db.style.cursor = 'pointer';
+
+                const dm = document.createElement('div');
+                dm.className = 'ghhelper-proxy-dropdown-menu';
+                overflow.forEach(p => {
+                    const url = ProxyManager.buildUrl(p, href_split, 'clone');
+                    const lk = document.createElement('a');
+                    lk.className = 'ghhelper-proxy-menu-item';
+                    lk.href = 'javascript:void(0)';
+                    lk.setAttribute('data-ghhelper-nt', '1');
+                    lk.textContent = p.name;
+                    lk.title = url + '\n\n点击复制：git clone ' + url;
+                    lk.dataset.ghhelperCloneUrl = 'git clone ' + url;
+                    lk.style.cursor = 'pointer';
+                    dm.appendChild(lk);
+                });
+
+                // click 切换下拉菜单
+                db.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                        if (el !== dd) el.classList.remove('ghhelper-dropdown-open');
+                    });
+                    dd.classList.toggle('ghhelper-dropdown-open');
+                });
+
+                dd.appendChild(db);
+                dd.appendChild(dm);
+                ddRow.appendChild(dd);
+                lastInserted.insertAdjacentElement('afterend', ddRow);
+            }
 
             // 给祖先容器添加点击委托（点击 input 自动复制）
             const grandparent = wrapperEl.parentElement;
             if (grandparent && !grandparent.dataset.ghhelperCloneClickBound) {
                 grandparent.dataset.ghhelperCloneClickBound = '1';
                 grandparent.addEventListener('click', (e) => {
+                    // 平铺 input 行：点击复制 value
                     if (e.target.tagName === 'INPUT' && e.target.value.startsWith('git clone ')) {
                         GM_setClipboard(e.target.value);
+                    }
+                    // 下拉菜单项：点击复制 dataset.ghhelperCloneUrl
+                    if (e.target.tagName === 'A' && e.target.dataset.ghhelperCloneUrl) {
+                        GM_setClipboard(e.target.dataset.ghhelperCloneUrl);
+                        // 复制后关闭菜单
+                        document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => el.classList.remove('ghhelper-dropdown-open'));
                     }
                 });
             }
 
-            LOG('  processCloneButtons: 已添加 ' + all.length + ' 个 Clone 加速源');
+            LOG('  processCloneButtons: 已添加 ' + all.length + ' 个 Clone 加速源, 平铺=' + pinned.length + ', 下拉=' + overflow.length);
         },
 
         // SSH 加速：在 Code 下拉菜单的 SSH clone input 下方插入加速源 input
@@ -1596,8 +1734,15 @@
                 hint.textContent += ' (点击文字可直接复制)';
             }
 
-            // 克隆原 input，生成加速源行
-            all.forEach(p => {
+            // 优先展示前 N 个为独立行，其余收入下拉
+            const maxDisplay = StorageManager.getMaxDisplay();
+            const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
+            const pinned = all.slice(0, maxPinned);
+            const overflow = all.slice(maxPinned);
+
+            // 平铺前 N 个：依次追加到上一次插入的元素之后，保持正序
+            let lastInserted = wrapperEl;
+            pinned.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'ssh');
                 const inputClone = html.cloneNode(false);
                 inputClone.removeAttribute('data-ghhelper-ssh-processed');
@@ -1615,21 +1760,81 @@
                 row.style.marginTop = '4px';
                 row.appendChild(inputClone);
 
-                wrapperEl.insertAdjacentElement('afterend', row);
+                lastInserted.insertAdjacentElement('afterend', row);
+                lastInserted = row;
             });
+
+            // 其余收入下拉菜单（克隆 input 行样式，但放在下拉菜单内）
+            if (overflow.length) {
+                const ddRow = document.createElement('div');
+                ddRow.className = 'ghhelper-ssh-row ' + wrapperEl.className;
+                ddRow.setAttribute('data-ghhelper-element', '1');
+                ddRow.setAttribute('data-ghhelper-nt', '1');
+                ddRow.style.marginTop = '4px';
+                ddRow.style.position = 'relative';
+
+                const dd = document.createElement('span');
+                dd.className = 'ghhelper-proxy-dropdown';
+                dd.setAttribute('data-ghhelper-element', '1');
+                dd.setAttribute('data-ghhelper-nt', '1');
+
+                const db = document.createElement('a');
+                db.className = 'ghhelper-proxy-btn';
+                db.textContent = '更多 ▼';
+                db.href = 'javascript:void(0)';
+                db.setAttribute('data-ghhelper-nt', '1');
+                db.style.cursor = 'pointer';
+
+                const dm = document.createElement('div');
+                dm.className = 'ghhelper-proxy-dropdown-menu';
+                overflow.forEach(p => {
+                    const url = ProxyManager.buildUrl(p, href_split, 'ssh');
+                    const lk = document.createElement('a');
+                    lk.className = 'ghhelper-proxy-menu-item';
+                    lk.href = 'javascript:void(0)';
+                    lk.setAttribute('data-ghhelper-nt', '1');
+                    lk.textContent = p.name;
+                    lk.title = url + '\n\n点击复制：git clone ' + url;
+                    lk.dataset.ghhelperSshUrl = 'git clone ' + url;
+                    lk.style.cursor = 'pointer';
+                    dm.appendChild(lk);
+                });
+
+                // click 切换下拉菜单
+                db.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                        if (el !== dd) el.classList.remove('ghhelper-dropdown-open');
+                    });
+                    dd.classList.toggle('ghhelper-dropdown-open');
+                });
+
+                dd.appendChild(db);
+                dd.appendChild(dm);
+                ddRow.appendChild(dd);
+                lastInserted.insertAdjacentElement('afterend', ddRow);
+            }
 
             // 给祖先容器添加点击委托
             const grandparent = wrapperEl.parentElement;
             if (grandparent && !grandparent.dataset.ghhelperSshClickBound) {
                 grandparent.dataset.ghhelperSshClickBound = '1';
                 grandparent.addEventListener('click', (e) => {
+                    // 平铺 input 行：点击复制 value
                     if (e.target.tagName === 'INPUT' && e.target.value.startsWith('git clone ')) {
                         GM_setClipboard(e.target.value);
+                    }
+                    // 下拉菜单项：点击复制 dataset.ghhelperSshUrl
+                    if (e.target.tagName === 'A' && e.target.dataset.ghhelperSshUrl) {
+                        GM_setClipboard(e.target.dataset.ghhelperSshUrl);
+                        // 复制后关闭菜单
+                        document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => el.classList.remove('ghhelper-dropdown-open'));
                     }
                 });
             }
 
-            LOG('  processSSHButtons: 已添加 ' + all.length + ' 个 SSH 加速源');
+            LOG('  processSSHButtons: 已添加 ' + all.length + ' 个 SSH 加速源, 平铺=' + pinned.length + ', 下拉=' + overflow.length);
         },
 
         // 判断 input 是否为 Clone URL 输入框（特征驱动，不依赖易变类名）
