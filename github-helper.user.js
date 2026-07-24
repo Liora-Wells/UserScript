@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub 助手
 // @namespace    https://github.com/Liora-Wells/UserScript
-// @version      1.2.0
+// @version      1.3.0
 // @description  GitHub Release 增强显示 + 多类型加速下载，兼容中文化插件
 // @author       Liora-Wells
 // @match        https://github.com/*
