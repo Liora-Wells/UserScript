@@ -455,8 +455,20 @@
                 return { id: 'windows', name: 'Windows', showTag: true };
             if (name.endsWith('.dmg') || name.endsWith('.pkg') || name.endsWith('.xip') || name.endsWith('.app.tar.gz') || name.includes('-mac') || name.includes('_mac') || name.includes('darwin'))
                 return { id: 'mac', name: 'macOS', showTag: true };
-            if (name.endsWith('.apk') || name.endsWith('.aab'))
-                return { id: 'android', name: 'Android', showTag: true };
+            // Android：先识别（.apk/.aab 后缀 或 文件名含 android 关键词），再细分子组
+            const isAndroid = name.endsWith('.apk') || name.endsWith('.aab') || /\bandroid\b/.test(name);
+            if (isAndroid) {
+                // 通用组优先判断（避免 universal 文件被误归 mobile/tv）
+                if (name.includes('universal') || name.includes('-all') || name.includes('_all') || /\ball\b/.test(name)) {
+                    return { id: 'android-universal', name: 'Android 通用', showTag: true };
+                }
+                // TV 版识别（用 \btv\b 边界匹配，避免误匹配 native/active）
+                if (/\btv\b/.test(name) || name.includes('leanback') || name.includes('atv') || name.includes('android-tv')) {
+                    return { id: 'android-tv', name: 'Android TV', showTag: true };
+                }
+                // 默认手机版
+                return { id: 'android-mobile', name: 'Android', showTag: true };
+            }
             if (name.endsWith('.ipa'))
                 return { id: 'ios', name: 'iOS', showTag: true };
             if (name.endsWith('.deb'))
@@ -498,8 +510,17 @@
                 if (groupInfo.id === 'linux-deb') groupScore += 300;
                 else if (groupInfo.id === 'linux-rpm') groupScore += 200;
                 else if (groupInfo.id === 'linux-appimage' || groupInfo.id === 'linux-flatpak') groupScore += 100;
+                else if (groupInfo.id === 'android-mobile') groupScore += 300;
+                else if (groupInfo.id === 'android-universal') groupScore += 200;
+                else if (groupInfo.id === 'android-tv') groupScore += 100;
             } else {
-                const osScores = { windows: 9000, mac: 8000, 'linux-deb': 7000, 'linux-rpm': 6000, 'linux-appimage': 5200, 'linux-flatpak': 5000, 'linux-arch': 4500, 'linux-other': 4000, android: 3500, ios: 3000, other: 2000, meta: -1000, source: -2000 };
+                const osScores = {
+                    windows: 9000, mac: 8000,
+                    'linux-deb': 7000, 'linux-rpm': 6000, 'linux-appimage': 5200, 'linux-flatpak': 5000,
+                    'linux-arch': 4500, 'linux-other': 4000,
+                    'android-mobile': 3500, 'android-universal': 3400, 'android-tv': 3300,
+                    ios: 3000, other: 2000, meta: -1000, source: -2000
+                };
                 groupScore = osScores[groupInfo.id] || 1000;
             }
 
@@ -524,7 +545,7 @@
                 'linux-arch': 'ghhelper-group-linux-arch', 'linux-appimage': 'ghhelper-group-linux-appimage',
                 'linux-flatpak': 'ghhelper-group-linux-flatpak', 'linux-ipk': 'ghhelper-group-linux-ipk',
                 'linux-snap': 'ghhelper-group-linux-snap', 'linux-other': 'ghhelper-group-linux-other',
-                android: 'ghhelper-group-mobile', ios: 'ghhelper-group-mobile',
+                'android-mobile': 'ghhelper-group-android-mobile', 'android-tv': 'ghhelper-group-android-tv', 'android-universal': 'ghhelper-group-android-universal', ios: 'ghhelper-group-mobile',
                 nupkg: 'ghhelper-group-nupkg', jar: 'ghhelper-group-jar', wheel: 'ghhelper-group-wheel'
             };
             return map[groupId] || 'ghhelper-group-other';
@@ -570,6 +591,12 @@
 .ghhelper-group-mac:hover{background-color:rgba(130,80,223,0.15)!important}
 .ghhelper-group-mobile{border-left:4px solid #1a7f37!important;background-color:rgba(26,127,55,0.1)!important}
 .ghhelper-group-mobile:hover{background-color:rgba(26,127,55,0.15)!important}
+.ghhelper-group-android-mobile{border-left:4px solid #1a7f37!important;background-color:rgba(26,127,55,0.1)!important}
+.ghhelper-group-android-mobile:hover{background-color:rgba(26,127,55,0.15)!important}
+.ghhelper-group-android-tv{border-left:4px solid #6f42c1!important;background-color:rgba(111,66,193,0.1)!important}
+.ghhelper-group-android-tv:hover{background-color:rgba(111,66,193,0.15)!important}
+.ghhelper-group-android-universal{border-left:4px solid #0969da!important;background-color:rgba(9,105,218,0.1)!important}
+.ghhelper-group-android-universal:hover{background-color:rgba(9,105,218,0.15)!important}
 .ghhelper-group-linux-deb{border-left:4px solid #bc4c00!important;background-color:rgba(188,76,0,0.1)!important}
 .ghhelper-group-linux-deb:hover{background-color:rgba(188,76,0,0.15)!important}
 .ghhelper-group-linux-rpm{border-left:4px solid #cf222e!important;background-color:rgba(207,34,46,0.1)!important}
@@ -591,6 +618,9 @@
 .ghhelper-tag-windows{color:#0969da!important;border-color:#0969da!important}
 .ghhelper-tag-mac{color:#8250df!important;border-color:#8250df!important}
 .ghhelper-tag-android{color:#1a7f37!important;border-color:#1a7f37!important}
+.ghhelper-tag-android-mobile{color:#1a7f37!important;border-color:#1a7f37!important}
+.ghhelper-tag-android-tv{color:#6f42c1!important;border-color:#6f42c1!important}
+.ghhelper-tag-android-universal{color:#0969da!important;border-color:#0969da!important}
 .ghhelper-tag-ios{color:#1a7f37!important;border-color:#1a7f37!important}
 .ghhelper-tag-linux-deb{color:#bc4c00!important;border-color:#bc4c00!important}
 .ghhelper-tag-linux-rpm{color:#cf222e!important;border-color:#cf222e!important}
@@ -611,6 +641,7 @@
 .ghhelper-proxy-menu-item:hover{background-color:var(--controlAction-bgColor-hover,var(--color-action-list-item-default-hover-bg))!important;text-decoration:none!important}
 .ghhelper-os-select,.ghhelper-arch-select{appearance:auto;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));border-radius:6px;color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;font-size:12px;font-weight:500;line-height:20px;padding:3px 8px;margin-left:8px}
 .ghhelper-os-select:hover,.ghhelper-arch-select:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
+.ghhelper-arch-reset{padding:3px 8px;font-size:12px;line-height:20px;cursor:pointer;margin-left:4px}
 .ghhelper-meta-wrapper>summary{cursor:pointer;padding:8px 16px;font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted,#8b949e));border-top:1px solid var(--borderColor-muted,var(--color-border-muted,#30363d))}
 .ghhelper-meta-wrapper>summary:hover{color:var(--fgColor-default,var(--color-fg-default,#e6edf3))}
 .ghhelper-notes-wrap{margin:16px 0;border:1px solid var(--color-border-muted,#21262d);border-radius:6px;overflow:hidden}
@@ -899,6 +930,29 @@
                     this.resortAll();
                 });
                 titleSpan.appendChild(archSel);
+
+                // 重置为当前系统架构按钮（混合模式：首次用系统架构，用户选择后记忆，可重置）
+                if (!titleSpan.querySelector('.ghhelper-arch-reset')) {
+                    const resetBtn = document.createElement('button');
+                    resetBtn.className = 'ghhelper-arch-reset Button Button--secondary Button--small ml-1';
+                    resetBtn.type = 'button';
+                    resetBtn.title = '重置为当前系统架构';
+                    resetBtn.textContent = '↺';
+                    resetBtn.setAttribute('data-ghhelper-element', '1');
+                    resetBtn.setAttribute('data-ghhelper-nt', '1');
+                    resetBtn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        StorageManager.setSelectedArch(null);
+                        const newArch = SortEngine.getCurrentArch();
+                        document.querySelectorAll('.ghhelper-arch-select').forEach(s => s.value = newArch);
+                        this.resortAll();
+                        LOG('  架构重置为当前系统: ' + newArch);
+                    });
+                    resetBtn.addEventListener('click', e => e.stopPropagation());
+                    resetBtn.addEventListener('mousedown', e => e.stopPropagation());
+                    titleSpan.appendChild(resetBtn);
+                }
             }
 
             if (StorageManager.isFeatureEnabled('downloadCount') && titleSpan && !summary.dataset.ghhelperDlBtn) {
