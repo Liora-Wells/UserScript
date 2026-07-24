@@ -455,8 +455,10 @@
                 return { id: 'windows', name: 'Windows', showTag: true };
             if (name.endsWith('.dmg') || name.endsWith('.pkg') || name.endsWith('.xip') || name.endsWith('.app.tar.gz') || name.includes('-mac') || name.includes('_mac') || name.includes('darwin'))
                 return { id: 'mac', name: 'macOS', showTag: true };
-            // Android：先识别（.apk/.aab 后缀 或 文件名含 android 关键词），再细分子组
-            const isAndroid = name.endsWith('.apk') || name.endsWith('.aab') || /\bandroid\b/.test(name);
+            // Android：先识别（.apk/.aab 后缀 或 非 Linux 包文件名含 android 关键词），再细分子组
+            // 关键词仅对非 Linux 包扩展名生效，避免 android-tools_*.deb 等被误归 Android
+            const isLinuxPkg = ['.deb', '.rpm', '.appimage', '.flatpak', '.pacman', '.ipk', '.snap'].some(ext => name.endsWith(ext));
+            const isAndroid = name.endsWith('.apk') || name.endsWith('.aab') || (!isLinuxPkg && /\bandroid\b/.test(name));
             if (isAndroid) {
                 // 通用组优先判断（避免 universal 文件被误归 mobile/tv）
                 if (name.includes('universal') || name.includes('-all') || name.includes('_all') || /\ball\b/.test(name)) {
@@ -949,7 +951,6 @@
                         this.resortAll();
                         LOG('  架构重置为当前系统: ' + newArch);
                     });
-                    resetBtn.addEventListener('click', e => e.stopPropagation());
                     resetBtn.addEventListener('mousedown', e => e.stopPropagation());
                     titleSpan.appendChild(resetBtn);
                 }
@@ -1912,19 +1913,19 @@
 
         // 清理 Clone 加速源行（只删除注入的行，不清除 input 标记）
         _clearCloneRows() {
-            const scope = document.getElementById('__primerPortalRoot__') || document;
+            const scope = this._findPortal();
             scope.querySelectorAll('.ghhelper-clone-row').forEach(e => e.remove());
         },
 
         // 清理 SSH 加速源行（只删除注入的行，不清除 input 标记）
         _clearSshRows() {
-            const scope = document.getElementById('__primerPortalRoot__') || document;
+            const scope = this._findPortal();
             scope.querySelectorAll('.ghhelper-ssh-row').forEach(e => e.remove());
         },
 
         // 清理所有 Clone/SSH 加速源行，并重置 input 标记（用于加速源变更后重渲）
         _clearAllCloneSshRows() {
-            const scope = document.getElementById('__primerPortalRoot__') || document;
+            const scope = this._findPortal();
             scope.querySelectorAll('.ghhelper-clone-row, .ghhelper-ssh-row').forEach(e => e.remove());
             scope.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
             scope.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
