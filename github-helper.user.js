@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub 助手
 // @namespace    https://github.com/Liora-Wells/UserScript
-// @version      1.2.0
+// @version      1.3.0
 // @description  GitHub Release 增强显示 + 多类型加速下载，兼容中文化插件
 // @author       Liora-Wells
 // @match        https://github.com/*
@@ -455,8 +455,22 @@
                 return { id: 'windows', name: 'Windows', showTag: true };
             if (name.endsWith('.dmg') || name.endsWith('.pkg') || name.endsWith('.xip') || name.endsWith('.app.tar.gz') || name.includes('-mac') || name.includes('_mac') || name.includes('darwin'))
                 return { id: 'mac', name: 'macOS', showTag: true };
-            if (name.endsWith('.apk') || name.endsWith('.aab'))
-                return { id: 'android', name: 'Android', showTag: true };
+            // Android：先识别（.apk/.aab 后缀 或 非 Linux 包文件名含 android 关键词），再细分子组
+            // 关键词仅对非 Linux 包扩展名生效，避免 android-tools_*.deb 等被误归 Android
+            const isLinuxPkg = ['.deb', '.rpm', '.appimage', '.flatpak', '.pacman', '.ipk', '.snap'].some(ext => name.endsWith(ext));
+            const isAndroid = name.endsWith('.apk') || name.endsWith('.aab') || (!isLinuxPkg && /\bandroid\b/.test(name));
+            if (isAndroid) {
+                // 通用组优先判断（避免 universal 文件被误归 mobile/tv）
+                if (name.includes('universal') || name.includes('-all') || name.includes('_all') || /\ball\b/.test(name)) {
+                    return { id: 'android-universal', name: 'Android 通用', showTag: true };
+                }
+                // TV 版识别（用 \btv\b 边界匹配，避免误匹配 native/active）
+                if (/\btv\b/.test(name) || name.includes('leanback') || name.includes('atv') || name.includes('android-tv')) {
+                    return { id: 'android-tv', name: 'Android TV', showTag: true };
+                }
+                // 默认手机版
+                return { id: 'android-mobile', name: 'Android', showTag: true };
+            }
             if (name.endsWith('.ipa'))
                 return { id: 'ios', name: 'iOS', showTag: true };
             if (name.endsWith('.deb'))
@@ -498,8 +512,17 @@
                 if (groupInfo.id === 'linux-deb') groupScore += 300;
                 else if (groupInfo.id === 'linux-rpm') groupScore += 200;
                 else if (groupInfo.id === 'linux-appimage' || groupInfo.id === 'linux-flatpak') groupScore += 100;
+                else if (groupInfo.id === 'android-mobile') groupScore += 300;
+                else if (groupInfo.id === 'android-universal') groupScore += 200;
+                else if (groupInfo.id === 'android-tv') groupScore += 100;
             } else {
-                const osScores = { windows: 9000, mac: 8000, 'linux-deb': 7000, 'linux-rpm': 6000, 'linux-appimage': 5200, 'linux-flatpak': 5000, 'linux-arch': 4500, 'linux-other': 4000, android: 3500, ios: 3000, other: 2000, meta: -1000, source: -2000 };
+                const osScores = {
+                    windows: 9000, mac: 8000,
+                    'linux-deb': 7000, 'linux-rpm': 6000, 'linux-appimage': 5200, 'linux-flatpak': 5000,
+                    'linux-arch': 4500, 'linux-other': 4000,
+                    'android-mobile': 3500, 'android-universal': 3400, 'android-tv': 3300,
+                    ios: 3000, other: 2000, meta: -1000, source: -2000
+                };
                 groupScore = osScores[groupInfo.id] || 1000;
             }
 
@@ -524,7 +547,7 @@
                 'linux-arch': 'ghhelper-group-linux-arch', 'linux-appimage': 'ghhelper-group-linux-appimage',
                 'linux-flatpak': 'ghhelper-group-linux-flatpak', 'linux-ipk': 'ghhelper-group-linux-ipk',
                 'linux-snap': 'ghhelper-group-linux-snap', 'linux-other': 'ghhelper-group-linux-other',
-                android: 'ghhelper-group-mobile', ios: 'ghhelper-group-mobile',
+                'android-mobile': 'ghhelper-group-android-mobile', 'android-tv': 'ghhelper-group-android-tv', 'android-universal': 'ghhelper-group-android-universal', ios: 'ghhelper-group-mobile',
                 nupkg: 'ghhelper-group-nupkg', jar: 'ghhelper-group-jar', wheel: 'ghhelper-group-wheel'
             };
             return map[groupId] || 'ghhelper-group-other';
@@ -570,6 +593,12 @@
 .ghhelper-group-mac:hover{background-color:rgba(130,80,223,0.15)!important}
 .ghhelper-group-mobile{border-left:4px solid #1a7f37!important;background-color:rgba(26,127,55,0.1)!important}
 .ghhelper-group-mobile:hover{background-color:rgba(26,127,55,0.15)!important}
+.ghhelper-group-android-mobile{border-left:4px solid #1a7f37!important;background-color:rgba(26,127,55,0.1)!important}
+.ghhelper-group-android-mobile:hover{background-color:rgba(26,127,55,0.15)!important}
+.ghhelper-group-android-tv{border-left:4px solid #6f42c1!important;background-color:rgba(111,66,193,0.1)!important}
+.ghhelper-group-android-tv:hover{background-color:rgba(111,66,193,0.15)!important}
+.ghhelper-group-android-universal{border-left:4px solid #0969da!important;background-color:rgba(9,105,218,0.1)!important}
+.ghhelper-group-android-universal:hover{background-color:rgba(9,105,218,0.15)!important}
 .ghhelper-group-linux-deb{border-left:4px solid #bc4c00!important;background-color:rgba(188,76,0,0.1)!important}
 .ghhelper-group-linux-deb:hover{background-color:rgba(188,76,0,0.15)!important}
 .ghhelper-group-linux-rpm{border-left:4px solid #cf222e!important;background-color:rgba(207,34,46,0.1)!important}
@@ -591,6 +620,9 @@
 .ghhelper-tag-windows{color:#0969da!important;border-color:#0969da!important}
 .ghhelper-tag-mac{color:#8250df!important;border-color:#8250df!important}
 .ghhelper-tag-android{color:#1a7f37!important;border-color:#1a7f37!important}
+.ghhelper-tag-android-mobile{color:#1a7f37!important;border-color:#1a7f37!important}
+.ghhelper-tag-android-tv{color:#6f42c1!important;border-color:#6f42c1!important}
+.ghhelper-tag-android-universal{color:#0969da!important;border-color:#0969da!important}
 .ghhelper-tag-ios{color:#1a7f37!important;border-color:#1a7f37!important}
 .ghhelper-tag-linux-deb{color:#bc4c00!important;border-color:#bc4c00!important}
 .ghhelper-tag-linux-rpm{color:#cf222e!important;border-color:#cf222e!important}
@@ -611,6 +643,7 @@
 .ghhelper-proxy-menu-item:hover{background-color:var(--controlAction-bgColor-hover,var(--color-action-list-item-default-hover-bg))!important;text-decoration:none!important}
 .ghhelper-os-select,.ghhelper-arch-select{appearance:auto;background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));border-radius:6px;color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;font-size:12px;font-weight:500;line-height:20px;padding:3px 8px;margin-left:8px}
 .ghhelper-os-select:hover,.ghhelper-arch-select:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
+.ghhelper-arch-reset{padding:3px 8px;font-size:12px;line-height:20px;cursor:pointer;margin-left:4px}
 .ghhelper-meta-wrapper>summary{cursor:pointer;padding:8px 16px;font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted,#8b949e));border-top:1px solid var(--borderColor-muted,var(--color-border-muted,#30363d))}
 .ghhelper-meta-wrapper>summary:hover{color:var(--fgColor-default,var(--color-fg-default,#e6edf3))}
 .ghhelper-notes-wrap{margin:16px 0;border:1px solid var(--color-border-muted,#21262d);border-radius:6px;overflow:hidden}
@@ -899,6 +932,28 @@
                     this.resortAll();
                 });
                 titleSpan.appendChild(archSel);
+
+                // 重置为当前系统架构按钮（混合模式：首次用系统架构，用户选择后记忆，可重置）
+                if (!titleSpan.querySelector('.ghhelper-arch-reset')) {
+                    const resetBtn = document.createElement('button');
+                    resetBtn.className = 'ghhelper-arch-reset Button Button--secondary Button--small ml-1';
+                    resetBtn.type = 'button';
+                    resetBtn.title = '重置为当前系统架构';
+                    resetBtn.textContent = '↺';
+                    resetBtn.setAttribute('data-ghhelper-element', '1');
+                    resetBtn.setAttribute('data-ghhelper-nt', '1');
+                    resetBtn.addEventListener('click', e => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        StorageManager.setSelectedArch(null);
+                        const newArch = SortEngine.getCurrentArch();
+                        document.querySelectorAll('.ghhelper-arch-select').forEach(s => s.value = newArch);
+                        this.resortAll();
+                        LOG('  架构重置为当前系统: ' + newArch);
+                    });
+                    resetBtn.addEventListener('mousedown', e => e.stopPropagation());
+                    titleSpan.appendChild(resetBtn);
+                }
             }
 
             if (StorageManager.isFeatureEnabled('downloadCount') && titleSpan && !summary.dataset.ghhelperDlBtn) {
@@ -1321,10 +1376,24 @@
         // 样式完全照搬 docs/Github 增强 - 高速下载.js：每个加速源克隆为独立 li，全部平铺
         processDownloadZIP(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            const html = target.querySelector('ul[class^=prc-ActionList-ActionList-]>li:last-child');
+            // 特征驱动：查找文本含 ZIP 且 href 含 /archive/ 或 codeload 的链接
+            const allLinks = target.getElementsByTagName('a');
+            let hrefEl = null;
+            for (let i = 0; i < allLinks.length; i++) {
+                const a = allLinks[i];
+                const text = (a.textContent || '').trim();
+                const href = a.getAttribute('href') || '';
+                // 排除文本是 URL 形式的链接（避免误匹配页面其他位置的 archive 链接）
+                if (text.startsWith('http')) continue;
+                if (/zip/i.test(text) && (href.includes('/archive/') || href.includes('codeload.github.com') || href.endsWith('.zip'))) {
+                    hrefEl = a;
+                    break;
+                }
+            }
+            if (!hrefEl) return;
+            // 找到包含该链接的 li 元素
+            const html = hrefEl.closest('li') || hrefEl.parentElement;
             if (!html) return;
-            const hrefEl = html.querySelector('a[href^="/"][href$=".zip"]');
-            if (!hrefEl || !hrefEl.getAttribute('href')) return;
 
             // 幂等检查：若已注入则跳过
             if (html.nextElementSibling && html.nextElementSibling.dataset.ghhelperZipRow === '1') return;
@@ -1334,8 +1403,14 @@
             const all = [...disp.pinned, ...disp.overflow];
             if (!all.length) return;
 
+            // 优先展示前 N 个为独立 li，其余收入下拉
+            const maxDisplay = StorageManager.getMaxDisplay();
+            const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
+            const pinned = all.slice(0, maxPinned);
+            const overflow = all.slice(maxPinned);
+
             let frag = '';
-            all.forEach(p => {
+            pinned.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href, 'download');
                 const clone = html.cloneNode(true);
                 const a = clone.querySelector('a[href$=".zip"]');
@@ -1352,14 +1427,101 @@
                 frag += clone.outerHTML;
             });
 
-            html.insertAdjacentHTML('afterend', frag);
-            LOG('  processDownloadZIP: 已添加 ' + all.length + ' 个 Download ZIP 加速源');
+            // 其余收入下拉菜单 li（用 insertAdjacentElement 保留事件监听器）
+            let dropdownLi = null;
+            let dropA = null;
+            if (overflow.length) {
+                dropdownLi = html.cloneNode(true);
+                dropA = dropdownLi.querySelector('a[href$=".zip"]');
+                const dropS = dropdownLi.querySelector('span[id]');
+                if (dropA && dropS) {
+                    dropA.href = 'javascript:void(0)';
+                    dropA.removeAttribute('target');
+                    dropA.removeAttribute('rel');
+                    dropA.style.cursor = 'pointer';
+                    dropS.textContent = '更多加速 ▼';
+                    dropdownLi.setAttribute('data-ghhelper-element', '1');
+                    dropdownLi.setAttribute('data-ghhelper-nt', '1');
+                    dropdownLi.setAttribute('data-ghhelper-zip-row', '1');
+                    // 添加 ghhelper-proxy-dropdown 类以复用 CSS（菜单显示/隐藏由 .ghhelper-dropdown-open 控制）
+                    dropdownLi.classList.add('ghhelper-proxy-dropdown');
+                    // 覆盖 display，避免 inline-flex 破坏 li 的菜单布局
+                    dropdownLi.style.display = 'list-item';
+                    dropdownLi.style.position = 'relative';
+
+                    const dm = document.createElement('div');
+                    dm.className = 'ghhelper-proxy-dropdown-menu';
+                    dm.setAttribute('data-ghhelper-element', '1');
+                    dm.setAttribute('data-ghhelper-nt', '1');
+                    overflow.forEach(p => {
+                        const url = ProxyManager.buildUrl(p, href, 'download');
+                        const lk = document.createElement('a');
+                        lk.className = 'ghhelper-proxy-menu-item';
+                        lk.href = url;
+                        lk.target = '_blank';
+                        lk.rel = 'noreferrer noopener nofollow';
+                        lk.setAttribute('data-ghhelper-nt', '1');
+                        lk.textContent = p.name;
+                        lk.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '');
+                        dm.appendChild(lk);
+                    });
+
+                    dropdownLi.appendChild(dm);
+                } else {
+                    dropdownLi = null;
+                }
+            }
+
+            // 先批量插入平铺 li
+            if (frag) html.insertAdjacentHTML('afterend', frag);
+            // 再单独插入下拉 li（保留事件监听器）
+            if (dropdownLi) {
+                // 找到平铺 li 的最后一个（如果有），将下拉 li 插入其后；否则插入到原 li 之后
+                const pinnedLis = html.parentElement.querySelectorAll('li[data-ghhelper-zip-row="1"]');
+                const lastPinned = pinnedLis.length ? pinnedLis[pinnedLis.length - 1] : html;
+                lastPinned.insertAdjacentElement('afterend', dropdownLi);
+
+                // 点击触发器切换菜单（复用外层 dropA 引用，避免重复查询失效）
+                if (dropA) {
+                    dropA.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                            if (el !== dropdownLi) el.classList.remove('ghhelper-dropdown-open');
+                        });
+                        dropdownLi.classList.toggle('ghhelper-dropdown-open');
+                    });
+                }
+            }
+            LOG('  processDownloadZIP: 已添加 ' + all.length + ' 个 Download ZIP 加速源, 平铺=' + pinned.length + ', 下拉=' + overflow.length);
         },
 
         // 清理 Download ZIP 加速源行
         _clearDownloadZIPRows() {
-            const scope = document.getElementById('__primerPortalRoot__') || document;
+            const scope = this._findPortal();
             scope.querySelectorAll('li[data-ghhelper-zip-row="1"]').forEach(e => e.remove());
+        },
+
+        // 查找 portal 容器（优先 id，fallback 到 body 直接子元素）
+        _findPortal() {
+            const portal = document.getElementById('__primerPortalRoot__');
+            if (portal) return portal;
+            // fallback：仅在 document.body 下一层查找，避免全树扫描
+            for (const child of document.body.children) {
+                if (child.matches && child.matches('[data-overlay-container], [class*="Overlay"]')) return child;
+            }
+            return document;
+        },
+
+        // 检测 tab 切换：根据容器内 input value 特征判断是 HTTPS 还是 SSH tab
+        _checkTabSwitch(container) {
+            const inputs = container.getElementsByTagName('input');
+            for (let i = 0; i < inputs.length; i++) {
+                const v = inputs[i].value;
+                if (v.startsWith('https://')) return 'https';
+                if (v.startsWith('git@')) return 'ssh';
+            }
+            return null;
         },
 
         // Raw 加速：在文件查看页 Raw 按钮后追加一串加速按钮
@@ -1405,11 +1567,17 @@
         // 关键：不修改原 input 的 value，避免切换协议时污染
         processCloneButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            // 查找 HTTPS Clone URL input
-            const html = target.querySelector('input[value^="https://"][value*="github.com"]');
+            // 查找 HTTPS Clone URL input（特征驱动：遍历所有 input，用 _isCloneInput 判断）
+            const inputs = target.getElementsByTagName('input');
+            let html = null;
+            for (let i = 0; i < inputs.length; i++) {
+                const inp = inputs[i];
+                if (inp.value.startsWith('https://') && this._isCloneInput(inp)) {
+                    html = inp;
+                    break;
+                }
+            }
             if (!html) return;
-            // 必须是 Clone URL（通常是 input-monospace 或类似样式）
-            if (!this._isCloneInput(html)) return;
             // 检查 input 是否可见（切换到 SSH tab 时 HTTPS input 可能被隐藏）
             if (html.offsetParent === null && html.getClientRects().length === 0) return;
             // 已处理且加速源行仍存在则跳过（避免重复处理）
@@ -1457,8 +1625,15 @@
                 hint.textContent += ' (点击文字可直接复制)';
             }
 
-            // 克隆原 input，生成加速源行
-            all.forEach(p => {
+            // 优先展示前 N 个为独立行，其余收入下拉
+            const maxDisplay = StorageManager.getMaxDisplay();
+            const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
+            const pinned = all.slice(0, maxPinned);
+            const overflow = all.slice(maxPinned);
+
+            // 平铺前 N 个：依次追加到上一次插入的元素之后，保持正序
+            let lastInserted = wrapperEl;
+            pinned.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'clone');
                 const inputClone = html.cloneNode(false);
                 inputClone.removeAttribute('data-ghhelper-clone-processed');
@@ -1477,29 +1652,96 @@
                 row.style.marginTop = '4px';
                 row.appendChild(inputClone);
 
-                wrapperEl.insertAdjacentElement('afterend', row);
+                lastInserted.insertAdjacentElement('afterend', row);
+                lastInserted = row;
             });
+
+            // 其余收入下拉菜单（克隆 input 行样式，但放在下拉菜单内）
+            if (overflow.length) {
+                const ddRow = document.createElement('div');
+                ddRow.className = 'ghhelper-clone-row ' + wrapperEl.className;
+                ddRow.setAttribute('data-ghhelper-element', '1');
+                ddRow.setAttribute('data-ghhelper-nt', '1');
+                ddRow.style.marginTop = '4px';
+                ddRow.style.position = 'relative';
+
+                const dd = document.createElement('span');
+                dd.className = 'ghhelper-proxy-dropdown';
+                dd.setAttribute('data-ghhelper-element', '1');
+                dd.setAttribute('data-ghhelper-nt', '1');
+
+                const db = document.createElement('a');
+                db.className = 'ghhelper-proxy-btn';
+                db.textContent = '更多 ▼';
+                db.href = 'javascript:void(0)';
+                db.setAttribute('data-ghhelper-nt', '1');
+                db.style.cursor = 'pointer';
+
+                const dm = document.createElement('div');
+                dm.className = 'ghhelper-proxy-dropdown-menu';
+                overflow.forEach(p => {
+                    const url = ProxyManager.buildUrl(p, href_split, 'clone');
+                    const lk = document.createElement('a');
+                    lk.className = 'ghhelper-proxy-menu-item';
+                    lk.href = 'javascript:void(0)';
+                    lk.setAttribute('data-ghhelper-nt', '1');
+                    lk.textContent = p.name;
+                    lk.title = url + '\n\n点击复制：git clone ' + url;
+                    lk.dataset.ghhelperCloneUrl = 'git clone ' + url;
+                    lk.style.cursor = 'pointer';
+                    dm.appendChild(lk);
+                });
+
+                // click 切换下拉菜单
+                db.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                        if (el !== dd) el.classList.remove('ghhelper-dropdown-open');
+                    });
+                    dd.classList.toggle('ghhelper-dropdown-open');
+                });
+
+                dd.appendChild(db);
+                dd.appendChild(dm);
+                ddRow.appendChild(dd);
+                lastInserted.insertAdjacentElement('afterend', ddRow);
+            }
 
             // 给祖先容器添加点击委托（点击 input 自动复制）
             const grandparent = wrapperEl.parentElement;
             if (grandparent && !grandparent.dataset.ghhelperCloneClickBound) {
                 grandparent.dataset.ghhelperCloneClickBound = '1';
                 grandparent.addEventListener('click', (e) => {
+                    // 平铺 input 行：点击复制 value
                     if (e.target.tagName === 'INPUT' && e.target.value.startsWith('git clone ')) {
                         GM_setClipboard(e.target.value);
+                    }
+                    // 下拉菜单项：点击复制 dataset.ghhelperCloneUrl
+                    if (e.target.tagName === 'A' && e.target.dataset.ghhelperCloneUrl) {
+                        GM_setClipboard(e.target.dataset.ghhelperCloneUrl);
+                        // 复制后关闭菜单
+                        document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => el.classList.remove('ghhelper-dropdown-open'));
                     }
                 });
             }
 
-            LOG('  processCloneButtons: 已添加 ' + all.length + ' 个 Clone 加速源');
+            LOG('  processCloneButtons: 已添加 ' + all.length + ' 个 Clone 加速源, 平铺=' + pinned.length + ', 下拉=' + overflow.length);
         },
 
         // SSH 加速：在 Code 下拉菜单的 SSH clone input 下方插入加速源 input
         processSSHButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            const html = target.querySelector('input[value^="git@"][value*="github.com"]');
+            // 查找 SSH Clone URL input（特征驱动：用 _isSshInput 判断）
+            const inputs = target.getElementsByTagName('input');
+            let html = null;
+            for (let i = 0; i < inputs.length; i++) {
+                if (this._isSshInput(inputs[i])) {
+                    html = inputs[i];
+                    break;
+                }
+            }
             if (!html) return;
-            if (!this._isCloneInput(html)) return;
             // 检查 input 是否可见（切换到 HTTPS tab 时 SSH input 可能被隐藏）
             if (html.offsetParent === null && html.getClientRects().length === 0) return;
             // 已处理且加速源行仍存在则跳过
@@ -1547,8 +1789,15 @@
                 hint.textContent += ' (点击文字可直接复制)';
             }
 
-            // 克隆原 input，生成加速源行
-            all.forEach(p => {
+            // 优先展示前 N 个为独立行，其余收入下拉
+            const maxDisplay = StorageManager.getMaxDisplay();
+            const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
+            const pinned = all.slice(0, maxPinned);
+            const overflow = all.slice(maxPinned);
+
+            // 平铺前 N 个：依次追加到上一次插入的元素之后，保持正序
+            let lastInserted = wrapperEl;
+            pinned.forEach(p => {
                 const url = ProxyManager.buildUrl(p, href_split, 'ssh');
                 const inputClone = html.cloneNode(false);
                 inputClone.removeAttribute('data-ghhelper-ssh-processed');
@@ -1566,50 +1815,117 @@
                 row.style.marginTop = '4px';
                 row.appendChild(inputClone);
 
-                wrapperEl.insertAdjacentElement('afterend', row);
+                lastInserted.insertAdjacentElement('afterend', row);
+                lastInserted = row;
             });
+
+            // 其余收入下拉菜单（克隆 input 行样式，但放在下拉菜单内）
+            if (overflow.length) {
+                const ddRow = document.createElement('div');
+                ddRow.className = 'ghhelper-ssh-row ' + wrapperEl.className;
+                ddRow.setAttribute('data-ghhelper-element', '1');
+                ddRow.setAttribute('data-ghhelper-nt', '1');
+                ddRow.style.marginTop = '4px';
+                ddRow.style.position = 'relative';
+
+                const dd = document.createElement('span');
+                dd.className = 'ghhelper-proxy-dropdown';
+                dd.setAttribute('data-ghhelper-element', '1');
+                dd.setAttribute('data-ghhelper-nt', '1');
+
+                const db = document.createElement('a');
+                db.className = 'ghhelper-proxy-btn';
+                db.textContent = '更多 ▼';
+                db.href = 'javascript:void(0)';
+                db.setAttribute('data-ghhelper-nt', '1');
+                db.style.cursor = 'pointer';
+
+                const dm = document.createElement('div');
+                dm.className = 'ghhelper-proxy-dropdown-menu';
+                overflow.forEach(p => {
+                    const url = ProxyManager.buildUrl(p, href_split, 'ssh');
+                    const lk = document.createElement('a');
+                    lk.className = 'ghhelper-proxy-menu-item';
+                    lk.href = 'javascript:void(0)';
+                    lk.setAttribute('data-ghhelper-nt', '1');
+                    lk.textContent = p.name;
+                    lk.title = url + '\n\n点击复制：git clone ' + url;
+                    lk.dataset.ghhelperSshUrl = 'git clone ' + url;
+                    lk.style.cursor = 'pointer';
+                    dm.appendChild(lk);
+                });
+
+                // click 切换下拉菜单
+                db.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => {
+                        if (el !== dd) el.classList.remove('ghhelper-dropdown-open');
+                    });
+                    dd.classList.toggle('ghhelper-dropdown-open');
+                });
+
+                dd.appendChild(db);
+                dd.appendChild(dm);
+                ddRow.appendChild(dd);
+                lastInserted.insertAdjacentElement('afterend', ddRow);
+            }
 
             // 给祖先容器添加点击委托
             const grandparent = wrapperEl.parentElement;
             if (grandparent && !grandparent.dataset.ghhelperSshClickBound) {
                 grandparent.dataset.ghhelperSshClickBound = '1';
                 grandparent.addEventListener('click', (e) => {
+                    // 平铺 input 行：点击复制 value
                     if (e.target.tagName === 'INPUT' && e.target.value.startsWith('git clone ')) {
                         GM_setClipboard(e.target.value);
+                    }
+                    // 下拉菜单项：点击复制 dataset.ghhelperSshUrl
+                    if (e.target.tagName === 'A' && e.target.dataset.ghhelperSshUrl) {
+                        GM_setClipboard(e.target.dataset.ghhelperSshUrl);
+                        // 复制后关闭菜单
+                        document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => el.classList.remove('ghhelper-dropdown-open'));
                     }
                 });
             }
 
-            LOG('  processSSHButtons: 已添加 ' + all.length + ' 个 SSH 加速源');
+            LOG('  processSSHButtons: 已添加 ' + all.length + ' 个 SSH 加速源, 平铺=' + pinned.length + ', 下拉=' + overflow.length);
         },
 
-        // 判断 input 是否为 Clone URL 输入框（避免误匹配搜索框等）
+        // 判断 input 是否为 Clone URL 输入框（特征驱动，不依赖易变类名）
         _isCloneInput(inp) {
-            // Clone URL input 通常有 input-monospace 或 aria-label 包含 clone/copy
-            const cls = inp.className || '';
-            const label = inp.getAttribute('aria-label') || '';
-            if (/input-monospace/i.test(cls)) return true;
-            if (/clone|copy|repository/i.test(label)) return true;
-            // 兜底：value 是 .git 结尾的 URL
-            if (/\.git$/.test(inp.value)) return true;
+            // 优先级 1：value 是 .git 结尾的 HTTPS URL（最稳定）
+            if (/^https:\/\/[^/]*github\.com\/.+\.git$/i.test(inp.value)) return true;
+            // 优先级 2：aria-label 含 clone/copy/repository
+            if (/clone|copy|repository/i.test(inp.getAttribute('aria-label') || '')) return true;
+            // 优先级 3：input-monospace 类（GitHub 常用样式）
+            if (/input-monospace/i.test(inp.className || '')) return true;
+            // 优先级 4：value 含 github.com 且含 .git（宽松兜底）
+            if (inp.value.includes('github.com') && /\.git/.test(inp.value)) return true;
             return false;
+        },
+
+        // 判断 input 是否为 SSH Clone URL 输入框
+        _isSshInput(inp) {
+            // SSH URL 格式：git@github.com:user/repo.git
+            return /^git@[^:]+:.+\.git$/.test(inp.value);
         },
 
         // 清理 Clone 加速源行（只删除注入的行，不清除 input 标记）
         _clearCloneRows() {
-            const scope = document.getElementById('__primerPortalRoot__') || document;
+            const scope = this._findPortal();
             scope.querySelectorAll('.ghhelper-clone-row').forEach(e => e.remove());
         },
 
         // 清理 SSH 加速源行（只删除注入的行，不清除 input 标记）
         _clearSshRows() {
-            const scope = document.getElementById('__primerPortalRoot__') || document;
+            const scope = this._findPortal();
             scope.querySelectorAll('.ghhelper-ssh-row').forEach(e => e.remove());
         },
 
         // 清理所有 Clone/SSH 加速源行，并重置 input 标记（用于加速源变更后重渲）
         _clearAllCloneSshRows() {
-            const scope = document.getElementById('__primerPortalRoot__') || document;
+            const scope = this._findPortal();
             scope.querySelectorAll('.ghhelper-clone-row, .ghhelper-ssh-row').forEach(e => e.remove());
             scope.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
             scope.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
@@ -2926,10 +3242,11 @@
     function updatePathCache() {
         const pathname = location.pathname;
         _isReleasePage = pathname.indexOf('/releases') > -1;
-        // 仓库主页特征：有 #repository-container-header 且非隐藏
-        // 仅在非 Release 页面时检查，避免重复 querySelector
+        // 仓库主页特征：有 #repository-container-header 元素
+        // 不检查 :not([hidden])，因为 GitHub React 改版后该元素可能处于临时 hidden 状态
+        // 元素存在即表明当前是仓库主页（Release 页面已通过 pathname 排除）
         _isRepoHome = !_isReleasePage &&
-            document.querySelector('#repository-container-header:not([hidden])') !== null;
+            document.querySelector('#repository-container-header') !== null;
     }
 
     function startGlobalObserver() {
@@ -2996,20 +3313,23 @@
                             return;
                         }
 
-                        // HTTPS/SSH tab 切换：React 重新渲染的 LocalTab 容器
-                        if (target.tagName === 'DIV' && target.className && target.className.indexOf('LocalTab-module__') !== -1) {
-                            LOG('全局 observer: LocalTab 切换');
-                            const portal = document.getElementById('__primerPortalRoot__') || document;
-                            if (target.querySelector('input[value^="https:"]')) {
-                                DOMRenderer._clearSshRows();
-                                DOMRenderer.processCloneButtons(portal);
-                                DOMRenderer.processDownloadZIP(portal);
-                            } else if (target.querySelector('input[value^="git@"]')) {
-                                DOMRenderer._clearCloneRows();
-                                DOMRenderer._clearDownloadZIPRows();
-                                DOMRenderer.processSSHButtons(portal);
+                        // HTTPS/SSH tab 切换：通过容器内 input value 特征判断（不依赖具体类名）
+                        if (target.tagName === 'DIV') {
+                            const tabType = DOMRenderer._checkTabSwitch(target);
+                            if (tabType) {
+                                LOG('全局 observer: tab 切换 -> ' + tabType);
+                                const portal = DOMRenderer._findPortal();
+                                if (tabType === 'https') {
+                                    DOMRenderer._clearSshRows();
+                                    DOMRenderer.processCloneButtons(portal);
+                                    DOMRenderer.processDownloadZIP(portal);
+                                } else if (tabType === 'ssh') {
+                                    DOMRenderer._clearCloneRows();
+                                    DOMRenderer._clearDownloadZIPRows();
+                                    DOMRenderer.processSSHButtons(portal);
+                                }
+                                return;
                             }
-                            return;
                         }
                     }
 
