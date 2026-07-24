@@ -1321,10 +1321,24 @@
         // 样式完全照搬 docs/Github 增强 - 高速下载.js：每个加速源克隆为独立 li，全部平铺
         processDownloadZIP(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            const html = target.querySelector('ul[class^=prc-ActionList-ActionList-]>li:last-child');
+            // 特征驱动：查找文本含 ZIP 且 href 含 /archive/ 或 codeload 的链接
+            const allLinks = target.getElementsByTagName('a');
+            let hrefEl = null;
+            for (let i = 0; i < allLinks.length; i++) {
+                const a = allLinks[i];
+                const text = (a.textContent || '').trim();
+                const href = a.getAttribute('href') || '';
+                // 排除文本是 URL 形式的链接（避免误匹配页面其他位置的 archive 链接）
+                if (text.startsWith('http')) continue;
+                if (/zip/i.test(text) && (href.includes('/archive/') || href.includes('codeload.github.com') || href.endsWith('.zip'))) {
+                    hrefEl = a;
+                    break;
+                }
+            }
+            if (!hrefEl) return;
+            // 找到包含该链接的 li 元素
+            const html = hrefEl.closest('li') || hrefEl.parentElement;
             if (!html) return;
-            const hrefEl = html.querySelector('a[href^="/"][href$=".zip"]');
-            if (!hrefEl || !hrefEl.getAttribute('href')) return;
 
             // 幂等检查：若已注入则跳过
             if (html.nextElementSibling && html.nextElementSibling.dataset.ghhelperZipRow === '1') return;
@@ -1358,8 +1372,30 @@
 
         // 清理 Download ZIP 加速源行
         _clearDownloadZIPRows() {
-            const scope = document.getElementById('__primerPortalRoot__') || document;
+            const scope = this._findPortal();
             scope.querySelectorAll('li[data-ghhelper-zip-row="1"]').forEach(e => e.remove());
+        },
+
+        // 查找 portal 容器（优先 id，fallback 到 body 直接子元素）
+        _findPortal() {
+            const portal = document.getElementById('__primerPortalRoot__');
+            if (portal) return portal;
+            // fallback：仅在 document.body 下一层查找，避免全树扫描
+            for (const child of document.body.children) {
+                if (child.matches && child.matches('[data-overlay-container], [class*="Overlay"]')) return child;
+            }
+            return document;
+        },
+
+        // 检测 tab 切换：根据容器内 input value 特征判断是 HTTPS 还是 SSH tab
+        _checkTabSwitch(container) {
+            const inputs = container.getElementsByTagName('input');
+            for (let i = 0; i < inputs.length; i++) {
+                const v = inputs[i].value;
+                if (v.startsWith('https://')) return 'https';
+                if (v.startsWith('git@')) return 'ssh';
+            }
+            return null;
         },
 
         // Raw 加速：在文件查看页 Raw 按钮后追加一串加速按钮
@@ -1405,11 +1441,17 @@
         // 关键：不修改原 input 的 value，避免切换协议时污染
         processCloneButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            // 查找 HTTPS Clone URL input
-            const html = target.querySelector('input[value^="https://"][value*="github.com"]');
+            // 查找 HTTPS Clone URL input（特征驱动：遍历所有 input，用 _isCloneInput 判断）
+            const inputs = target.getElementsByTagName('input');
+            let html = null;
+            for (let i = 0; i < inputs.length; i++) {
+                const inp = inputs[i];
+                if (inp.value.startsWith('https://') && this._isCloneInput(inp)) {
+                    html = inp;
+                    break;
+                }
+            }
             if (!html) return;
-            // 必须是 Clone URL（通常是 input-monospace 或类似样式）
-            if (!this._isCloneInput(html)) return;
             // 检查 input 是否可见（切换到 SSH tab 时 HTTPS input 可能被隐藏）
             if (html.offsetParent === null && html.getClientRects().length === 0) return;
             // 已处理且加速源行仍存在则跳过（避免重复处理）
@@ -1497,9 +1539,16 @@
         // SSH 加速：在 Code 下拉菜单的 SSH clone input 下方插入加速源 input
         processSSHButtons(target) {
             if (!StorageManager.isFeatureEnabled('proxyButtons')) return;
-            const html = target.querySelector('input[value^="git@"][value*="github.com"]');
+            // 查找 SSH Clone URL input（特征驱动：用 _isSshInput 判断）
+            const inputs = target.getElementsByTagName('input');
+            let html = null;
+            for (let i = 0; i < inputs.length; i++) {
+                if (this._isSshInput(inputs[i])) {
+                    html = inputs[i];
+                    break;
+                }
+            }
             if (!html) return;
-            if (!this._isCloneInput(html)) return;
             // 检查 input 是否可见（切换到 HTTPS tab 时 SSH input 可能被隐藏）
             if (html.offsetParent === null && html.getClientRects().length === 0) return;
             // 已处理且加速源行仍存在则跳过
@@ -1583,16 +1632,23 @@
             LOG('  processSSHButtons: 已添加 ' + all.length + ' 个 SSH 加速源');
         },
 
-        // 判断 input 是否为 Clone URL 输入框（避免误匹配搜索框等）
+        // 判断 input 是否为 Clone URL 输入框（特征驱动，不依赖易变类名）
         _isCloneInput(inp) {
-            // Clone URL input 通常有 input-monospace 或 aria-label 包含 clone/copy
-            const cls = inp.className || '';
-            const label = inp.getAttribute('aria-label') || '';
-            if (/input-monospace/i.test(cls)) return true;
-            if (/clone|copy|repository/i.test(label)) return true;
-            // 兜底：value 是 .git 结尾的 URL
-            if (/\.git$/.test(inp.value)) return true;
+            // 优先级 1：value 是 .git 结尾的 HTTPS URL（最稳定）
+            if (/^https:\/\/[^/]*github\.com\/.+\.git$/i.test(inp.value)) return true;
+            // 优先级 2：aria-label 含 clone/copy/repository
+            if (/clone|copy|repository/i.test(inp.getAttribute('aria-label') || '')) return true;
+            // 优先级 3：input-monospace 类（GitHub 常用样式）
+            if (/input-monospace/i.test(inp.className || '')) return true;
+            // 优先级 4：value 含 github.com 且含 .git（宽松兜底）
+            if (inp.value.includes('github.com') && /\.git/.test(inp.value)) return true;
             return false;
+        },
+
+        // 判断 input 是否为 SSH Clone URL 输入框
+        _isSshInput(inp) {
+            // SSH URL 格式：git@github.com:user/repo.git
+            return /^git@[^:]+:.+\.git$/.test(inp.value);
         },
 
         // 清理 Clone 加速源行（只删除注入的行，不清除 input 标记）
@@ -2996,20 +3052,23 @@
                             return;
                         }
 
-                        // HTTPS/SSH tab 切换：React 重新渲染的 LocalTab 容器
-                        if (target.tagName === 'DIV' && target.className && target.className.indexOf('LocalTab-module__') !== -1) {
-                            LOG('全局 observer: LocalTab 切换');
-                            const portal = document.getElementById('__primerPortalRoot__') || document;
-                            if (target.querySelector('input[value^="https:"]')) {
-                                DOMRenderer._clearSshRows();
-                                DOMRenderer.processCloneButtons(portal);
-                                DOMRenderer.processDownloadZIP(portal);
-                            } else if (target.querySelector('input[value^="git@"]')) {
-                                DOMRenderer._clearCloneRows();
-                                DOMRenderer._clearDownloadZIPRows();
-                                DOMRenderer.processSSHButtons(portal);
+                        // HTTPS/SSH tab 切换：通过容器内 input value 特征判断（不依赖具体类名）
+                        if (target.tagName === 'DIV') {
+                            const tabType = DOMRenderer._checkTabSwitch(target);
+                            if (tabType) {
+                                LOG('全局 observer: tab 切换 -> ' + tabType);
+                                const portal = DOMRenderer._findPortal();
+                                if (tabType === 'https') {
+                                    DOMRenderer._clearSshRows();
+                                    DOMRenderer.processCloneButtons(portal);
+                                    DOMRenderer.processDownloadZIP(portal);
+                                } else if (tabType === 'ssh') {
+                                    DOMRenderer._clearCloneRows();
+                                    DOMRenderer._clearDownloadZIPRows();
+                                    DOMRenderer.processSSHButtons(portal);
+                                }
+                                return;
                             }
-                            return;
                         }
                     }
 
