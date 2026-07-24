@@ -2982,10 +2982,11 @@
     function updatePathCache() {
         const pathname = location.pathname;
         _isReleasePage = pathname.indexOf('/releases') > -1;
-        // 仓库主页特征：有 #repository-container-header 且非隐藏
-        // 仅在非 Release 页面时检查，避免重复 querySelector
+        // 仓库主页特征：有 #repository-container-header 元素
+        // 不检查 :not([hidden])，因为 GitHub React 改版后该元素可能处于临时 hidden 状态
+        // 元素存在即表明当前是仓库主页（Release 页面已通过 pathname 排除）
         _isRepoHome = !_isReleasePage &&
-            document.querySelector('#repository-container-header:not([hidden])') !== null;
+            document.querySelector('#repository-container-header') !== null;
     }
 
     function startGlobalObserver() {
