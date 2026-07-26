@@ -7,6 +7,7 @@
 |  | 脚本名称 | 脚本功能 | 安装 |
 |---|---|---|---|
 |  | **GitHub 助手** | GitHub Release 增强显示 + 多类型加速下载（Clone / SSH / Raw / ZIP），兼容中文化插件 | [**Greasy Fork**](https://update.greasyfork.org/scripts/587965/GitHub%20%E5%8A%A9%E6%89%8B.user.js) \| [**GitHub Raw**](https://github.com/Liora-Wells/UserScript/raw/main/github-helper.user.js) |
+|  | **发送到Aria2下载** | 右键/弹窗将链接发送到本地/远程 Aria2 下载，支持多服务器、批量、磁力、重命名、请求头、代理、任务历史、状态查询 | [**GitHub Raw**](https://github.com/Liora-Wells/UserScript/raw/main/send-to-aria2.user.js) |
 
 > **Note**
 > *脚本列表会随心补充，可能时多时少~*

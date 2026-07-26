@@ -858,7 +858,6 @@
         else if (activeTab === 'settings') renderSettingsTab(body, footer);
     }
 
-    // 临时占位（任务 8/10 替换 renderHistoryTab / renderSettingsTab）
     function renderDownloadTab(body, footer) {
         body.innerHTML = `
             <div class="aria2-group">
@@ -1890,7 +1889,7 @@
     // 9. 初始化（init）
 
     // ============================================================
-    // 9. 初始化（临时最小骨架，后续任务替换）
+    // 9. 初始化（init）
     // ============================================================
     function init() {
         StorageManager.migrateIfNeeded();
