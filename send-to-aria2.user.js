@@ -1390,8 +1390,310 @@
             showToast('全部服务器查询失败', 'error');
         }
     }
+    // 服务器编辑表单当前展开的 id（'new' 表示新建，null 表示无展开）
+    let editingServerId = null;
+
     function renderSettingsTab(body, footer) {
-        body.innerHTML = '<div class="aria2-tips">设置 Tab 待实现（任务 10）</div>';
+        body.innerHTML = `
+            <div class="aria2-group">
+                <div class="aria2-row" style="align-items:center">
+                    <strong style="flex-grow:1">服务器管理</strong>
+                    <button class="aria2-btn aria2-btn-primary" id="aria2-add-server-btn" style="flex:0 0 auto">+ 添加服务器</button>
+                </div>
+                <div id="aria2-server-list" style="margin-top:12px"></div>
+            </div>
+            <hr style="border:none;border-top:1px solid var(--aria2-border-color);margin:20px 0">
+            <div class="aria2-group">
+                <strong>通用偏好</strong>
+                <div id="aria2-prefs-list" style="margin-top:12px"></div>
+            </div>
+            <hr style="border:none;border-top:1px solid var(--aria2-border-color);margin:20px 0">
+            <div class="aria2-group">
+                <strong>配置导入导出</strong>
+                <div style="margin-top:12px" class="aria2-row">
+                    <button class="aria2-btn aria2-btn-default" id="aria2-export-btn">📤 导出配置</button>
+                    <button class="aria2-btn aria2-btn-default" id="aria2-import-btn">📥 导入配置</button>
+                    <input type="file" id="aria2-import-file" accept=".json" style="display:none">
+                </div>
+                <div class="aria2-tips">导出所有服务器和偏好为 JSON 文件，导入时覆盖当前配置</div>
+            </div>
+        `;
+
+        footer.innerHTML = '';
+
+        renderServerList();
+        renderPrefsList();
+
+        document.getElementById('aria2-add-server-btn').addEventListener('click', function () {
+            editingServerId = 'new';
+            renderServerList();
+        });
+
+        document.getElementById('aria2-export-btn').addEventListener('click', exportConfig);
+        document.getElementById('aria2-import-btn').addEventListener('click', function () {
+            document.getElementById('aria2-import-file').click();
+        });
+        document.getElementById('aria2-import-file').addEventListener('change', importConfig);
+    }
+
+    function renderServerList() {
+        const list = document.getElementById('aria2-server-list');
+        const servers = StorageManager.getServers() || [];
+        const lastId = StorageManager.getLastServerId();
+
+        list.innerHTML = servers.map(s => {
+            if (s.id === editingServerId) {
+                return renderServerForm(s);
+            }
+            const isLast = s.id === lastId;
+            return `
+                <div class="aria2-server-card" data-id="${escapeHtml(s.id)}">
+                    <div class="aria2-server-card-head">
+                        <div>
+                            <div class="aria2-server-card-name">${escapeHtml(s.name)}${isLast ? ' <span class="aria2-tips">（上次使用）</span>' : ''}</div>
+                            <div class="aria2-server-card-meta">
+                                ${escapeHtml(s.rpcUrl)}<br>
+                                默认路径: ${escapeHtml(s.defaultDir || '（空）')} | 代理: ${s.enableProxy ? '开 ' + escapeHtml(s.proxyUrl) : '关'}
+                            </div>
+                        </div>
+                        <div class="aria2-server-card-actions">
+                            <button class="aria2-btn aria2-btn-default" data-edit="${escapeHtml(s.id)}">✏️编辑</button>
+                            <button class="aria2-btn aria2-btn-danger" data-del="${escapeHtml(s.id)}">🗑</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // 新建表单
+        if (editingServerId === 'new') {
+            list.innerHTML += renderServerForm(null);
+        }
+
+        // 绑定事件
+        list.querySelectorAll('[data-edit]').forEach(btn => {
+            btn.addEventListener('click', function () {
+                editingServerId = btn.getAttribute('data-edit');
+                renderServerList();
+            });
+        });
+        list.querySelectorAll('[data-del]').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const id = btn.getAttribute('data-del');
+                const servers = StorageManager.getServers();
+                if (servers.length <= 1) {
+                    showToast('至少保留一个服务器', 'error');
+                    return;
+                }
+                showConfirmBar(btn.id || 'aria2-server-list', '确定删除该服务器？', function () {
+                    StorageManager.setServers(servers.filter(s => s.id !== id));
+                    if (StorageManager.getLastServerId() === id) StorageManager.setLastServerId(null);
+                    renderServerList();
+                    refreshToolbar();
+                    showToast('已删除', 'success');
+                });
+            });
+        });
+
+        bindServerFormEvents();
+    }
+
+    function renderServerForm(server) {
+        const isNew = !server;
+        const s = server || Object.assign({}, DEFAULT_SERVER, { id: '', name: '', rpcUrl: '', rpcSecret: '', defaultDir: '', proxyUrl: '', enableProxy: false, headers: { referer: '', userAgent: '', cookie: '' } });
+        return `
+            <div class="aria2-server-card">
+                <div class="aria2-server-card-name">${isNew ? '新建服务器' : '编辑: ' + escapeHtml(s.name)}</div>
+                <div style="margin-top:12px">
+                    <div class="aria2-group">
+                        <label class="aria2-label">名称</label>
+                        <input type="text" class="aria2-input" id="aria2-form-name" value="${escapeHtml(s.name)}" placeholder="如 本机 Aria2">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">RPC 地址</label>
+                        <input type="text" class="aria2-input" id="aria2-form-rpcurl" value="${escapeHtml(s.rpcUrl)}" placeholder="http://localhost:6800/jsonrpc">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">RPC 密钥</label>
+                        <input type="password" class="aria2-input" id="aria2-form-secret" value="${escapeHtml(s.rpcSecret)}" placeholder="无则留空">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">默认下载路径</label>
+                        <input type="text" class="aria2-input" id="aria2-form-dir" value="${escapeHtml(s.defaultDir)}" placeholder="留空用 Aria2 默认">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">代理地址</label>
+                        <input type="text" class="aria2-input" id="aria2-form-proxy" value="${escapeHtml(s.proxyUrl)}" placeholder="http://127.0.0.1:7890 或 socks5://...">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-checkbox-label">
+                            <input type="checkbox" id="aria2-form-enableproxy" ${s.enableProxy ? 'checked' : ''}> 默认启用代理
+                        </label>
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">默认 Referer</label>
+                        <input type="text" class="aria2-input" id="aria2-form-referer" value="${escapeHtml(s.headers.referer)}">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">默认 User-Agent</label>
+                        <input type="text" class="aria2-input" id="aria2-form-ua" value="${escapeHtml(s.headers.userAgent)}">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">默认 Cookie</label>
+                        <input type="text" class="aria2-input" id="aria2-form-cookie" value="${escapeHtml(s.headers.cookie)}">
+                    </div>
+                    <div class="aria2-row" style="margin-top:14px">
+                        <button class="aria2-btn aria2-btn-default" id="aria2-server-form-cancel-btn">取消</button>
+                        <button class="aria2-btn aria2-btn-primary" id="aria2-server-form-save-btn">保存</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function bindServerFormEvents() {
+        const saveBtn = document.getElementById('aria2-server-form-save-btn');
+        const cancelBtn = document.getElementById('aria2-server-form-cancel-btn');
+        if (!saveBtn || !cancelBtn) return;
+
+        cancelBtn.addEventListener('click', function () {
+            editingServerId = null;
+            renderServerList();
+        });
+
+        saveBtn.addEventListener('click', function () {
+            const name = document.getElementById('aria2-form-name').value.trim();
+            const rpcUrl = document.getElementById('aria2-form-rpcurl').value.trim();
+            const rpcSecret = document.getElementById('aria2-form-secret').value.trim();
+            const defaultDir = document.getElementById('aria2-form-dir').value.trim();
+            const proxyUrl = document.getElementById('aria2-form-proxy').value.trim();
+            const enableProxy = document.getElementById('aria2-form-enableproxy').checked;
+            const referer = document.getElementById('aria2-form-referer').value.trim();
+            const userAgent = document.getElementById('aria2-form-ua').value.trim();
+            const cookie = document.getElementById('aria2-form-cookie').value.trim();
+
+            if (!name) { showToast('名称不能为空', 'error'); return; }
+            if (!rpcUrl) { showToast('RPC 地址不能为空', 'error'); return; }
+            // 简单校验
+            if (!/^https?:\/\//.test(rpcUrl)) { showToast('RPC 地址需以 http:// 或 https:// 开头', 'error'); return; }
+            if (proxyUrl && !/^(https?|socks5):\/\//.test(proxyUrl)) {
+                showToast('代理地址需以 http:// https:// 或 socks5:// 开头', 'error'); return;
+            }
+
+            const servers = StorageManager.getServers();
+            let target;
+            if (editingServerId === 'new') {
+                target = {
+                    id: genId('srv'),
+                    createdAt: Date.now()
+                };
+            } else {
+                target = servers.find(s => s.id === editingServerId);
+            }
+            Object.assign(target, {
+                name: name,
+                rpcUrl: rpcUrl,
+                rpcSecret: rpcSecret,
+                defaultDir: defaultDir,
+                proxyUrl: proxyUrl,
+                enableProxy: enableProxy,
+                headers: { referer: referer, userAgent: userAgent, cookie: cookie }
+            });
+
+            if (editingServerId === 'new') {
+                servers.push(target);
+                StorageManager.setServers(servers);
+            } else {
+                StorageManager.setServers(servers); // Object.assign 已修改原对象
+            }
+
+            editingServerId = null;
+            renderServerList();
+            refreshToolbar();
+            showToast('已保存', 'success');
+        });
+    }
+
+    function renderPrefsList() {
+        const list = document.getElementById('aria2-prefs-list');
+        const prefs = StorageManager.getPrefs();
+        const items = [
+            { key: 'autoNotification', icon: '🔔', title: '桌面通知', desc: '发送成功后显示桌面通知' },
+            { key: 'captureRightClick', icon: '🖱️', title: '右键捕获', desc: '在网页右键时自动捕获下载链接' },
+            { key: 'historyEnabled', icon: '📜', title: '任务历史', desc: '记录最近 ' + prefs.historyLimit + ' 条任务' }
+        ];
+        list.innerHTML = items.map(item => `
+            <div class="aria2-pref-card">
+                <div class="aria2-pref-card-info">
+                    <div class="aria2-pref-card-title">${item.icon} ${item.title}</div>
+                    <div class="aria2-pref-card-desc">${item.desc}</div>
+                </div>
+                <div class="aria2-switch" data-pref="${item.key}" data-on="${prefs[item.key] ? '1' : '0'}"></div>
+            </div>
+        `).join('');
+
+        list.querySelectorAll('.aria2-switch').forEach(sw => {
+            sw.addEventListener('click', function () {
+                const key = sw.getAttribute('data-pref');
+                const newPrefs = Object.assign({}, StorageManager.getPrefs());
+                newPrefs[key] = !newPrefs[key];
+                StorageManager.setPrefs(newPrefs);
+                sw.setAttribute('data-on', newPrefs[key] ? '1' : '0');
+                if (key === 'historyEnabled' && !newPrefs[key]) {
+                    showToast('已关闭历史记录（已有历史保留）', 'success');
+                }
+            });
+        });
+    }
+
+    function exportConfig() {
+        const data = {
+            version: 1,
+            exportedAt: Date.now(),
+            servers: StorageManager.getServers(),
+            prefs: StorageManager.getPrefs()
+        };
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'aria2-config-' + new Date().toISOString().slice(0, 10) + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('已导出', 'success');
+    }
+
+    function importConfig(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function (ev) {
+            try {
+                const data = JSON.parse(ev.target.result);
+                if (!data.servers || !Array.isArray(data.servers) || data.servers.length === 0) {
+                    showToast('文件格式不正确：缺少 servers', 'error');
+                    return;
+                }
+                showConfirmBar('aria2-import-btn', '导入将覆盖当前配置，确定？', function () {
+                    StorageManager.setServers(data.servers);
+                    if (data.prefs) StorageManager.setPrefs(Object.assign({}, DEFAULT_PREFS, data.prefs));
+                    // 重置 lastServerId 防止指向不存在的 id
+                    const firstId = data.servers[0].id;
+                    StorageManager.setLastServerId(firstId);
+                    renderSettingsTab(document.getElementById('aria2-body'), document.getElementById('aria2-footer'));
+                    refreshToolbar();
+                    showToast('已导入', 'success');
+                });
+            } catch (err) {
+                showToast('解析失败: ' + err.message, 'error');
+            }
+        };
+        reader.readAsText(file);
+        // 清空 input 值，允许再次选同一文件
+        e.target.value = '';
     }
 
     // ============================================================
