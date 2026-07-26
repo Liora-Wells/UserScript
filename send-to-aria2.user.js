@@ -1220,16 +1220,17 @@
 
     function bindHistoryCardEvents() {
         const list = document.getElementById('aria2-history-list');
-        if (!list) return;
-        // 事件委托
-        list.querySelectorAll('.aria2-history-card').forEach(card => {
+        if (!list || list.__aria2HistoryBound) return;
+        list.__aria2HistoryBound = true;
+        // 事件委托：在稳定父容器上绑定单个监听器，避免 DOM 更新丢失监听
+        list.addEventListener('click', function (e) {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            const card = btn.closest('.aria2-history-card');
+            if (!card) return;
             const id = card.getAttribute('data-id');
-            card.querySelectorAll('button[data-action]').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    const action = btn.getAttribute('data-action');
-                    handleHistoryAction(id, action);
-                });
-            });
+            const action = btn.getAttribute('data-action');
+            handleHistoryAction(id, action);
         });
     }
 
