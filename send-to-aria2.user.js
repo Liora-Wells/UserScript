@@ -818,15 +818,15 @@
         refreshToolbar();
         refreshTabs();
         renderActiveTab();
+        bindToolbarEvents();
         document.getElementById('aria2-mask').setAttribute('data-show', '1');
-        // 快捷键绑定（任务 9 实现，此处空实现占位）
-        if (typeof onBindModalKeys === 'function') onBindModalKeys();
+        onBindModalKeys();
     }
 
     function closeModal() {
         const mask = document.getElementById('aria2-mask');
         if (mask) mask.setAttribute('data-show', '0');
-        if (typeof onUnbindModalKeys === 'function') onUnbindModalKeys();
+        onUnbindModalKeys();
     }
 
     function refreshToolbar() {
@@ -1392,6 +1392,163 @@
     }
     function renderSettingsTab(body, footer) {
         body.innerHTML = '<div class="aria2-tips">设置 Tab 待实现（任务 10）</div>';
+    }
+
+    // ============================================================
+    // 7. UI 交互
+    // ============================================================
+
+    let toastTimer = null;
+    function showToast(text, type) {
+        const toast = document.getElementById('aria2-toast');
+        if (!toast) {
+            // 兜底：弹窗外未创建时用 alert
+            alert(text);
+            return;
+        }
+        toast.textContent = text;
+        toast.setAttribute('data-type', type || '');
+        toast.setAttribute('data-show', '1');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+            toast.setAttribute('data-show', '0');
+        }, 3000);
+    }
+
+    /**
+     * 内嵌确认条（避免 confirm 阻塞）
+     * @param {string} triggerBtnId 触发按钮 id（会被临时隐藏）
+     * @param {string} text 提示文本
+     * @param {function} onConfirm 确认回调
+     */
+    function showConfirmBar(triggerBtnId, text, onConfirm) {
+        const btn = document.getElementById(triggerBtnId);
+        if (!btn) { if (confirm(text)) onConfirm(); return; }
+
+        // 在按钮位置插入确认条，隐藏触发按钮
+        const bar = document.createElement('div');
+        bar.className = 'aria2-confirm-bar';
+        bar.setAttribute('data-show', '1');
+        bar.innerHTML = `
+            <span style="flex-grow:1">${escapeHtml(text)}</span>
+            <button class="aria2-btn aria2-btn-primary" data-cf="yes" style="padding:4px 12px;font-size:12px">确认</button>
+            <button class="aria2-btn aria2-btn-default" data-cf="no" style="padding:4px 12px;font-size:12px">取消</button>
+        `;
+        btn.style.display = 'none';
+        btn.parentNode.insertBefore(bar, btn.nextSibling);
+
+        const cleanup = function () {
+            bar.remove();
+            btn.style.display = '';
+        };
+        bar.querySelector('[data-cf="yes"]').addEventListener('click', function () {
+            cleanup();
+            onConfirm();
+        });
+        bar.querySelector('[data-cf="no"]').addEventListener('click', cleanup);
+    }
+
+    // ---------- 快捷键 ----------
+    let keyHandlerRef = null;
+
+    function onBindModalKeys() {
+        if (keyHandlerRef) return; // 已绑定
+        keyHandlerRef = function (e) {
+            // Esc 关闭
+            if (e.key === 'Escape') {
+                closeModal();
+                return;
+            }
+            // Ctrl+Enter 发送（仅下载 Tab）
+            if (e.ctrlKey && e.key === 'Enter' && activeTab === 'download') {
+                e.preventDefault();
+                const btn = document.getElementById('aria2-send-btn');
+                if (btn && !btn.disabled) btn.click();
+                return;
+            }
+            // Ctrl+S 保存（设置 Tab 服务器编辑表单内）
+            if (e.ctrlKey && (e.key === 's' || e.key === 'S') && activeTab === 'settings') {
+                const saveBtn = document.getElementById('aria2-server-form-save-btn');
+                if (saveBtn) {
+                    e.preventDefault();
+                    saveBtn.click();
+                }
+                return;
+            }
+            // Ctrl+1/2/3 切换 Tab
+            if (e.ctrlKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+                e.preventDefault();
+                const map = { '1': 'download', '2': 'history', '3': 'settings' };
+                activeTab = map[e.key];
+                refreshTabs();
+                renderActiveTab();
+            }
+        };
+        document.addEventListener('keydown', keyHandlerRef);
+    }
+
+    function onUnbindModalKeys() {
+        if (keyHandlerRef) {
+            document.removeEventListener('keydown', keyHandlerRef);
+            keyHandlerRef = null;
+        }
+    }
+
+    // ---------- 工具栏 / Tab 交互绑定 ----------
+    function bindToolbarEvents() {
+        // 仅绑定一次（用 data-bound 标记）
+        const app = document.getElementById('aria2-app');
+        if (!app || app.getAttribute('data-bound')) return;
+        app.setAttribute('data-bound', '1');
+
+        // 关闭按钮
+        document.getElementById('aria2-close').addEventListener('click', closeModal);
+        document.getElementById('aria2-mask').addEventListener('click', function (e) {
+            if (e.target === this) closeModal();
+        });
+
+        // 服务器切换
+        document.getElementById('aria2-server-select').addEventListener('change', function (e) {
+            StorageManager.setLastServerId(e.target.value);
+            refreshToolbar();
+            renderActiveTab(); // 重新渲染当前 Tab（部分 Tab 依赖当前服务器）
+        });
+
+        // 主题切换
+        document.getElementById('aria2-theme-btn').addEventListener('click', function () {
+            const prefs = StorageManager.getPrefs();
+            const next = prefs.theme === 'dark' ? 'light' : 'dark';
+            const newPrefs = Object.assign({}, prefs, { theme: next });
+            StorageManager.setPrefs(newPrefs);
+            document.getElementById('aria2-app').setAttribute('data-aria2-theme', next);
+            this.textContent = next === 'dark' ? '☀️' : '🌙';
+        });
+
+        // Tab 切换
+        document.querySelectorAll('.aria2-tab').forEach(tab => {
+            tab.addEventListener('click', function () {
+                activeTab = tab.getAttribute('data-tab');
+                refreshTabs();
+                renderActiveTab();
+            });
+        });
+
+        // 测试连接
+        document.getElementById('aria2-test-btn').addEventListener('click', async function () {
+            const server = StorageManager.getCurrentServer();
+            if (!server) { showToast('无服务器', 'error'); return; }
+            this.disabled = true;
+            this.textContent = '测试中...';
+            try {
+                const v = await new Aria2RPC(server).getVersion();
+                showToast('✓ 连接成功 (Aria2 v' + v.version + ')', 'success');
+            } catch (e) {
+                showToast('✗ ' + e.message, 'error');
+            } finally {
+                this.disabled = false;
+                this.textContent = '⚡测试';
+            }
+        });
     }
 
     // ============================================================
