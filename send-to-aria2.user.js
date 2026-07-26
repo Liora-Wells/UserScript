@@ -72,6 +72,120 @@
     };
 
     // ============================================================
+    // 2. 工具函数
+    // ============================================================
+
+    /**
+     * 生成唯一 id（前缀 + 时间戳 + 随机）
+     */
+    function genId(prefix) {
+        return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    }
+
+    /**
+     * 校验 URL 协议是否在白名单内
+     * @returns {boolean}
+     */
+    function isValidUrl(url) {
+        if (!url || typeof url !== 'string') return false;
+        const trimmed = url.trim();
+        if (!trimmed) return false;
+        // magnet / thunder / ed2k 是 scheme: 开头但不是 protocol 形式，特殊处理
+        if (/^(magnet|thunder|ed2k):/i.test(trimmed)) return true;
+        try {
+            const u = new URL(trimmed);
+            return PROTOCOL_WHITELIST.includes(u.protocol.toLowerCase());
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * 从 URL 提取文件名（末段）
+     * 不再过滤"无点"文件名（保留 LICENSE、Makefile 等）
+     * @returns {string} 文件名，无则返回空字符串
+     */
+    function getFileNameFromUrl(url) {
+        if (!url) return '';
+        try {
+            const u = new URL(url);
+            const pathname = u.pathname;
+            if (!pathname || pathname === '/') return '';
+            const last = pathname.split('/').pop();
+            if (!last) return '';
+            try {
+                return decodeURIComponent(last);
+            } catch (e) {
+                return last;
+            }
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /**
+     * 判断 URL 是否为内联资源（data:/blob:），Aria2 无法处理
+     */
+    function isInlineUrl(url) {
+        if (!url) return false;
+        return /^(data:|blob:)/i.test(url.trim());
+    }
+
+    /**
+     * 防抖
+     */
+    function debounce(fn, wait) {
+        let timer = null;
+        return function () {
+            const ctx = this, args = arguments;
+            clearTimeout(timer);
+            timer = setTimeout(function () { fn.apply(ctx, args); }, wait);
+        };
+    }
+
+    /**
+     * 转义 HTML（防止注入）
+     */
+    function escapeHtml(str) {
+        if (str == null) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    /**
+     * 格式化字节为可读字符串
+     */
+    function formatBytes(bytes) {
+        if (!bytes || bytes < 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let i = 0;
+        let v = bytes;
+        while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+        return v.toFixed(i === 0 ? 0 : 2) + ' ' + units[i];
+    }
+
+    /**
+     * 格式化相对时间（"2 分钟前"）
+     */
+    function formatRelativeTime(ts) {
+        if (!ts) return '';
+        const diff = Date.now() - ts;
+        const sec = Math.floor(diff / 1000);
+        if (sec < 60) return '刚刚';
+        const min = Math.floor(sec / 60);
+        if (min < 60) return min + ' 分钟前';
+        const hr = Math.floor(min / 60);
+        if (hr < 24) return hr + ' 小时前';
+        const day = Math.floor(hr / 24);
+        if (day < 30) return day + ' 天前';
+        return new Date(ts).toLocaleDateString();
+    }
+
+    // ============================================================
     // 模块分区（后续任务按此顺序填充）
     // ============================================================
     // 1. 常量定义（DEFAULTS / STORAGE_KEYS / PROTOCOL_WHITELIST）
