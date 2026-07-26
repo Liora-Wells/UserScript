@@ -858,9 +858,234 @@
         else if (activeTab === 'settings') renderSettingsTab(body, footer);
     }
 
-    // 临时占位（任务 7/8/10 替换）
+    // 临时占位（任务 8/10 替换 renderHistoryTab / renderSettingsTab）
     function renderDownloadTab(body, footer) {
-        body.innerHTML = '<div class="aria2-tips">下载 Tab 待实现（任务 7）</div>';
+        body.innerHTML = `
+            <div class="aria2-group">
+                <label class="aria2-label">下载链接（一行一个，支持 http/https/ftp/magnet）</label>
+                <textarea class="aria2-textarea" id="aria2-url-input" placeholder="请输入下载链接，一行一个"></textarea>
+                <div class="aria2-tips" id="aria2-url-count"></div>
+            </div>
+            <div class="aria2-group">
+                <label class="aria2-label">文件名（重命名，可选）</label>
+                <input type="text" class="aria2-input" id="aria2-filename-input" placeholder="留空使用原文件名">
+                <div class="aria2-tips">批量下载时留空</div>
+            </div>
+            <div class="aria2-group">
+                <label class="aria2-label">保存路径（可选）</label>
+                <div class="aria2-row">
+                    <input type="text" class="aria2-input" id="aria2-dir-input" placeholder="留空使用该服务器默认路径">
+                    <button class="aria2-btn aria2-btn-default" id="aria2-remember-dir-btn" style="flex:0 0 auto;">记忆</button>
+                </div>
+            </div>
+            <div class="aria2-group">
+                <label class="aria2-checkbox-label">
+                    <input type="checkbox" id="aria2-use-proxy-checkbox"> 使用代理（该服务器配置的代理）
+                </label>
+            </div>
+            <div class="aria2-group">
+                <span class="aria2-collapse-toggle" id="aria2-advanced-toggle">▸ 高级选项</span>
+                <div class="aria2-collapse-body" id="aria2-advanced-body">
+                    <div class="aria2-group">
+                        <label class="aria2-label">Referer（留空用服务器默认）</label>
+                        <input type="text" class="aria2-input" id="aria2-referer-input" placeholder="如 https://example.com">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">User-Agent（留空用服务器默认）</label>
+                        <input type="text" class="aria2-input" id="aria2-ua-input" placeholder="如 Mozilla/5.0 ...">
+                    </div>
+                    <div class="aria2-group">
+                        <label class="aria2-label">Cookie（留空用服务器默认）</label>
+                        <input type="text" class="aria2-input" id="aria2-cookie-input" placeholder="如 key=val; key2=val2">
+                    </div>
+                </div>
+            </div>
+            <div class="aria2-status" id="aria2-download-status"></div>
+        `;
+
+        footer.innerHTML = `
+            <button class="aria2-btn aria2-btn-default" id="aria2-clear-btn">清空</button>
+            <button class="aria2-btn aria2-btn-default" id="aria2-cancel-btn">取消</button>
+            <button class="aria2-btn aria2-btn-primary" id="aria2-send-btn">发送下载</button>
+        `;
+
+        const server = StorageManager.getCurrentServer() || {};
+        document.getElementById('aria2-dir-input').value = server.defaultDir || '';
+        document.getElementById('aria2-use-proxy-checkbox').checked = !!server.enableProxy;
+
+        // URL 计数（去重）
+        const urlInput = document.getElementById('aria2-url-input');
+        const urlCount = document.getElementById('aria2-url-count');
+        const updateCount = function () {
+            const lines = urlInput.value.split('\n').map(s => s.trim()).filter(Boolean);
+            const unique = Array.from(new Set(lines));
+            if (lines.length === 0) urlCount.textContent = '';
+            else if (unique.length === lines.length) urlCount.textContent = '共 ' + lines.length + ' 个链接';
+            else urlCount.textContent = '共 ' + lines.length + ' 个链接（去重后 ' + unique.length + ' 个）';
+        };
+        urlInput.addEventListener('input', updateCount);
+
+        // 折叠
+        const advToggle = document.getElementById('aria2-advanced-toggle');
+        const advBody = document.getElementById('aria2-advanced-body');
+        advToggle.addEventListener('click', function () {
+            const show = advBody.getAttribute('data-show') === '1';
+            advBody.setAttribute('data-show', show ? '0' : '1');
+            advToggle.textContent = (show ? '▸' : '▾') + ' 高级选项';
+        });
+
+        // 清空
+        document.getElementById('aria2-clear-btn').addEventListener('click', function () {
+            urlInput.value = '';
+            document.getElementById('aria2-filename-input').value = '';
+            document.getElementById('aria2-dir-input').value = server.defaultDir || '';
+            document.getElementById('aria2-use-proxy-checkbox').checked = !!server.enableProxy;
+            document.getElementById('aria2-referer-input').value = '';
+            document.getElementById('aria2-ua-input').value = '';
+            document.getElementById('aria2-cookie-input').value = '';
+            updateCount();
+            showDownloadStatus('', '');
+        });
+
+        // 取消
+        document.getElementById('aria2-cancel-btn').addEventListener('click', closeModal);
+
+        // 记忆路径
+        document.getElementById('aria2-remember-dir-btn').addEventListener('click', function () {
+            const dir = document.getElementById('aria2-dir-input').value.trim();
+            const cur = StorageManager.getCurrentServer();
+            if (!cur) return;
+            const servers = StorageManager.getServers().map(s => s.id === cur.id ? Object.assign({}, s, { defaultDir: dir }) : s);
+            StorageManager.setServers(servers);
+            showToast('已记忆为该服务器默认路径', 'success');
+        });
+
+        // 发送
+        document.getElementById('aria2-send-btn').addEventListener('click', handleSendDownload);
+    }
+
+    function showDownloadStatus(text, type) {
+        const el = document.getElementById('aria2-download-status');
+        if (!el) return;
+        el.textContent = text;
+        if (text && type) el.setAttribute('data-type', type);
+        else el.removeAttribute('data-type');
+    }
+
+    /**
+     * 发送下载按钮处理（规格 6.2-6.5）
+     */
+    async function handleSendDownload() {
+        const urlInput = document.getElementById('aria2-url-input');
+        const filenameInput = document.getElementById('aria2-filename-input');
+        const dirInput = document.getElementById('aria2-dir-input');
+        const useProxyCheckbox = document.getElementById('aria2-use-proxy-checkbox');
+        const sendBtn = document.getElementById('aria2-send-btn');
+
+        const rawLines = urlInput.value.split('\n').map(s => s.trim()).filter(Boolean);
+        const urls = Array.from(new Set(rawLines)); // 去重
+        const filename = filenameInput.value.trim();
+        const saveDir = dirInput.value.trim();
+        const useProxy = useProxyCheckbox.checked;
+        const headers = {
+            referer: document.getElementById('aria2-referer-input').value.trim(),
+            userAgent: document.getElementById('aria2-ua-input').value.trim(),
+            cookie: document.getElementById('aria2-cookie-input').value.trim()
+        };
+
+        if (urls.length === 0) {
+            showDownloadStatus('请输入下载链接', 'error');
+            return;
+        }
+
+        // 校验每个 URL
+        for (const u of urls) {
+            if (isInlineUrl(u)) {
+                showDownloadStatus('链接为内联资源（data:/blob:），无法发送: ' + u, 'error');
+                return;
+            }
+            if (!isValidUrl(u)) {
+                showDownloadStatus('链接格式错误或协议不支持: ' + u, 'error');
+                return;
+            }
+        }
+
+        // 批量+文件名互斥
+        if (urls.length > 1 && filename) {
+            showDownloadStatus('批量下载请清空文件名', 'error');
+            return;
+        }
+
+        // 代理校验
+        const server = StorageManager.getCurrentServer();
+        if (useProxy && !(server && server.proxyUrl && server.proxyUrl.trim())) {
+            showDownloadStatus('请先在设置中为该服务器配置代理地址', 'error');
+            return;
+        }
+
+        // 协议混合校验
+        const protocols = new Set(urls.map(u => u.split(':')[0].toLowerCase()));
+        if (protocols.size > 1) {
+            showDownloadStatus('批量下载不支持混合协议', 'error');
+            return;
+        }
+
+        // 发送
+        sendBtn.disabled = true;
+        sendBtn.textContent = '发送中...';
+        showDownloadStatus('', '');
+        try {
+            const options = buildOptions({ filename, saveDir, useProxy, headers }, server);
+            const result = await batchSendUrls(urls, options, server);
+            const okCount = result.success.length;
+            const failCount = result.failed.length;
+
+            if (failCount === 0) {
+                showDownloadStatus('下载任务发送成功，共 ' + okCount + ' 个任务', 'success');
+            } else if (okCount === 0) {
+                showDownloadStatus('全部失败：' + result.failed[0].error, 'error');
+            } else {
+                showDownloadStatus('部分成功：' + okCount + ' 个成功，' + failCount + ' 个失败（' + result.failed[0].error + '）', 'error');
+            }
+
+            // 记录历史
+            const prefs = StorageManager.getPrefs();
+            if (prefs.historyEnabled) {
+                result.success.forEach(s => {
+                    StorageManager.addHistoryItem({
+                        id: genId('task'),
+                        serverId: server.id,
+                        urls: [s.url],
+                        filename: filename,
+                        saveDir: saveDir,
+                        usedProxy: useProxy,
+                        gid: s.gid,
+                        status: 'sent',
+                        createdAt: Date.now(),
+                        lastQueryAt: 0
+                    });
+                });
+            }
+
+            // 桌面通知
+            if (prefs.autoNotification && okCount > 0) {
+                GM_notification({
+                    title: '发送到Aria2成功',
+                    text: '已成功发送 ' + okCount + ' 个下载任务',
+                    timeout: 3000
+                });
+            }
+
+            // 全部成功则 2 秒后关闭
+            if (failCount === 0) {
+                setTimeout(closeModal, 2000);
+            }
+        } catch (e) {
+            showDownloadStatus(e.message || '发送失败', 'error');
+        } finally {
+            sendBtn.disabled = false;
+            sendBtn.textContent = '发送下载';
+        }
     }
     function renderHistoryTab(body, footer) {
         body.innerHTML = '<div class="aria2-tips">历史 Tab 待实现（任务 8）</div>';
