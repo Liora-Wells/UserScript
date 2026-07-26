@@ -1109,10 +1109,10 @@
         renderHistoryChips();
         renderHistoryList();
 
-        document.getElementById('aria2-history-search').addEventListener('input', function (e) {
+        document.getElementById('aria2-history-search').addEventListener('input', debounce(function (e) {
             historySearch = e.target.value.trim().toLowerCase();
             renderHistoryList();
-        });
+        }, 200));
 
         document.getElementById('aria2-history-refresh-btn').addEventListener('click', refreshActiveHistory);
         document.getElementById('aria2-history-clear-btn').addEventListener('click', function () {
@@ -1205,7 +1205,7 @@
                     <span class="aria2-history-card-status" style="background:${statusInfo.color}">${escapeHtml(statusInfo.label)}</span>
                     <span class="aria2-tips">${escapeHtml(formatRelativeTime(item.createdAt))}</span>
                 </div>
-                <div class="aria2-history-card-url">${escapeHtml(urlText)}</div>
+                <div class="aria2-history-card-url">${escapeHtml(urlText).replace(/\n/g, '<br>')}</div>
                 <div class="aria2-history-card-meta">${meta}</div>
                 ${progress || speed ? '<div class="aria2-history-card-meta">' + escapeHtml(progress + speed) + '</div>' : ''}
                 <div class="aria2-history-card-actions">
@@ -1237,7 +1237,10 @@
     async function handleHistoryAction(id, action) {
         const items = StorageManager.getHistory();
         const item = items.find(x => x.id === id);
-        if (!item) return;
+        if (!item) {
+            showToast('任务记录已不存在', 'error');
+            return;
+        }
 
         if (action === 'delete') {
             StorageManager.removeHistoryItem(id);
@@ -1313,8 +1316,9 @@
             renderHistoryChips();
             renderHistoryList();
         } catch (e) {
-            // 任务可能已被删除
-            StorageManager.updateHistoryItem(item.id, { status: 'unknown', lastQueryAt: Date.now() });
+            // 网络错误/RPC 宕机/密钥失效等不应污染任务状态，仅更新查询时间
+            // 任务确实被删除的情况由用户手动判断
+            StorageManager.updateHistoryItem(item.id, { lastQueryAt: Date.now() });
             renderHistoryChips();
             renderHistoryList();
             showToast('查询失败: ' + e.message, 'error');
@@ -1325,6 +1329,7 @@
      * 批量刷新所有活动任务（用 tellActive 一次拉取）
      */
     async function refreshActiveHistory() {
+        let failedServerCount = 0;
         const servers = StorageManager.getServers() || [];
         const serverMap = {};
         servers.forEach(s => serverMap[s.id] = s);
@@ -1350,6 +1355,7 @@
             try {
                 activeList = await rpc.tellActive();
             } catch (e) {
+                failedServerCount++;
                 continue; // 该服务器查询失败，跳过
             }
             const gidToStatus = {};
@@ -1367,15 +1373,22 @@
                         lastQueryAt: Date.now()
                     });
                 } else {
-                    // 不在活动列表中，可能已完成或被删除，标记为 unknown 待下次手动查询
-                    StorageManager.updateHistoryItem(item.id, { status: 'unknown', lastQueryAt: Date.now() });
+                    // 不在活动列表中，可能是 waiting/paused/complete/removed，不修改 status 避免污染
+                    // 用户可手动点"查询"按钮查询单条状态
+                    StorageManager.updateHistoryItem(item.id, { lastQueryAt: Date.now() });
                 }
             });
         }
 
         renderHistoryChips();
         renderHistoryList();
-        showToast('活动任务已刷新', 'success');
+        if (failedServerCount === 0) {
+            showToast('活动任务已刷新', 'success');
+        } else if (failedServerCount < Object.keys(byServer).length) {
+            showToast('已刷新，' + failedServerCount + ' 个服务器查询失败', 'error');
+        } else {
+            showToast('全部服务器查询失败', 'error');
+        }
     }
     function renderSettingsTab(body, footer) {
         body.innerHTML = '<div class="aria2-tips">设置 Tab 待实现（任务 10）</div>';
