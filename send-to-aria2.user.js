@@ -352,6 +352,144 @@
     };
 
     // ============================================================
+    // 4. RPC 客户端
+    // ============================================================
+
+    class Aria2RPC {
+        constructor(server) {
+            this.server = server;
+        }
+
+        /**
+         * 内部：发送 JSON-RPC 请求
+         * @returns {Promise}
+         */
+        _call(method, params = []) {
+            const server = this.server;
+            return new Promise((resolve, reject) => {
+                if (!server || !server.rpcUrl) {
+                    reject(new Error('RPC 地址未配置'));
+                    return;
+                }
+                const fullParams = [];
+                if (server.rpcSecret && server.rpcSecret.trim()) {
+                    fullParams.push('token:' + server.rpcSecret.trim());
+                }
+                fullParams.push(...params);
+
+                const body = JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 'aria2_' + method + '_' + Date.now(),
+                    method: method,
+                    params: fullParams
+                });
+
+                GM_xmlhttpRequest({
+                    method: 'POST',
+                    url: server.rpcUrl.trim(),
+                    headers: { 'Content-Type': 'application/json' },
+                    data: body,
+                    timeout: 10000,
+                    onload: function (resp) {
+                        try {
+                            const result = JSON.parse(resp.responseText);
+                            if (result.error) {
+                                reject(new Error('Aria2 错误 [' + result.error.code + ']: ' + (result.error.message || '')));
+                            } else {
+                                resolve(result.result);
+                            }
+                        } catch (e) {
+                            reject(new Error('Aria2 响应格式异常，请检查 RPC 地址是否指向 jsonrpc 端点'));
+                        }
+                    },
+                    onerror: function () {
+                        reject(new Error('连接失败，请检查 Aria2 是否启动、RPC 地址是否正确'));
+                    },
+                    ontimeout: function () {
+                        reject(new Error('连接超时，请检查 RPC 服务是否正常运行'));
+                    }
+                });
+            });
+        }
+
+        /**
+         * 测试连接，返回版本号
+         */
+        getVersion() {
+            return this._call('aria2.getVersion', []);
+        }
+
+        /**
+         * 添加下载任务
+         * @param {string[]} urls 单个或多个 URL
+         * @param {object} options Aria2 选项（dir/out/all-proxy/referer/user-agent/header 等）
+         * @returns {Promise<string>} GID
+         */
+        addUri(urls, options) {
+            const params = [urls];
+            if (options && Object.keys(options).length > 0) params.push(options);
+            return this._call('aria2.addUri', params);
+        }
+
+        /**
+         * 查询单个任务状态
+         * @param {string} gid
+         * @param {string[]} keys 需要返回的字段，空则返回全部
+         */
+        tellStatus(gid, keys) {
+            const params = [gid];
+            if (keys && keys.length > 0) params.push(keys);
+            return this._call('aria2.tellStatus', params);
+        }
+
+        /**
+         * 查询所有活动任务（历史 Tab 批量刷新用）
+         */
+        tellActive() {
+            return this._call('aria2.tellActive', []);
+        }
+    }
+
+    /**
+     * 构造 Aria2 选项（规格 6.3）
+     * @param {object} input { filename, saveDir, useProxy, headers }
+     * @param {object} server 服务器对象
+     */
+    function buildOptions(input, server) {
+        const options = {};
+        if (input.filename) options.out = input.filename;
+        if (input.saveDir) options.dir = input.saveDir;
+        else if (server.defaultDir) options.dir = server.defaultDir;
+        if (input.useProxy && server.proxyUrl) options['all-proxy'] = server.proxyUrl;
+        const referer = (input.headers && input.headers.referer) || (server.headers && server.headers.referer) || '';
+        const userAgent = (input.headers && input.headers.userAgent) || (server.headers && server.headers.userAgent) || '';
+        const cookie = (input.headers && input.headers.cookie) || (server.headers && server.headers.cookie) || '';
+        if (referer) options.referer = referer;
+        if (userAgent) options['user-agent'] = userAgent;
+        if (cookie) options.header = 'Cookie: ' + cookie;
+        return options;
+    }
+
+    /**
+     * 批量发送多个 URL（规格 6.4：循环单条调用）
+     * @returns {Promise<{success: Array, failed: Array}>}
+     */
+    async function batchSendUrls(urls, options, server) {
+        const rpc = new Aria2RPC(server);
+        const success = [];
+        const failed = [];
+        for (let i = 0; i < urls.length; i++) {
+            try {
+                const gid = await rpc.addUri([urls[i]], options);
+                success.push({ url: urls[i], gid: gid });
+            } catch (e) {
+                failed.push({ url: urls[i], error: e.message });
+            }
+        }
+        return { success, failed };
+    }
+
+    // ============================================================
     // 模块分区（后续任务按此顺序填充）
     // ============================================================
     // 1. 常量定义（DEFAULTS / STORAGE_KEYS / PROTOCOL_WHITELIST）
