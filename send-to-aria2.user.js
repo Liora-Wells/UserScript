@@ -1590,6 +1590,13 @@
             } else {
                 target = servers.find(s => s.id === editingServerId);
             }
+            if (!target) {
+                // 极端情况：editingServerId 指向的服务器已不存在
+                showToast('该服务器已不存在，请刷新', 'error');
+                editingServerId = null;
+                renderServerList();
+                return;
+            }
             Object.assign(target, {
                 name: name,
                 rpcUrl: rpcUrl,
@@ -1678,14 +1685,26 @@
                     return;
                 }
                 showConfirmBar('aria2-import-btn', '导入将覆盖当前配置，确定？', function () {
-                    StorageManager.setServers(data.servers);
+                    // 校验每个 server 的最小结构并规范化字段（合并默认值，防止 headers 缺失导致渲染崩溃）
+                    const valid = data.servers.filter(s => s && typeof s === 'object' && s.id && s.rpcUrl);
+                    if (valid.length === 0) {
+                        showToast('文件中无有效服务器', 'error');
+                        return;
+                    }
+                    const normalized = valid.map(s => Object.assign(
+                        {},
+                        DEFAULT_SERVER,
+                        { headers: { referer: '', userAgent: '', cookie: '' } },
+                        s,
+                        s.headers ? { headers: Object.assign({ referer: '', userAgent: '', cookie: '' }, s.headers) } : {}
+                    ));
+                    StorageManager.setServers(normalized);
                     if (data.prefs) StorageManager.setPrefs(Object.assign({}, DEFAULT_PREFS, data.prefs));
                     // 重置 lastServerId 防止指向不存在的 id
-                    const firstId = data.servers[0].id;
-                    StorageManager.setLastServerId(firstId);
+                    StorageManager.setLastServerId(normalized[0].id);
                     renderSettingsTab(document.getElementById('aria2-body'), document.getElementById('aria2-footer'));
                     refreshToolbar();
-                    showToast('已导入', 'success');
+                    showToast('已导入（' + normalized.length + ' 个服务器）', 'success');
                 });
             } catch (err) {
                 showToast('解析失败: ' + err.message, 'error');
