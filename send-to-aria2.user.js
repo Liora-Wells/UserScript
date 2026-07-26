@@ -43,7 +43,7 @@
         theme: 'dark',
         autoNotification: true,
         historyEnabled: true,
-        historyLimit: 100,
+        historyLimit: 50,
         captureRightClick: true
     };
 
@@ -745,6 +745,19 @@
                 background: #fff; border-radius: 50%; transition: left 0.2s;
             }
             .aria2-switch[data-on="1"]::after { left: 20px; }
+
+            /* 历史条数输入框（嵌入偏好卡片描述中） */
+            .aria2-history-limit-input {
+                width: 56px; padding: 2px 6px; margin: 0 4px;
+                border: 1px solid var(--aria2-border-color); border-radius: 4px;
+                background: var(--aria2-input-bg); color: var(--aria2-input-text);
+                font-size: 12px; font-family: inherit; text-align: center;
+                transition: border-color 0.2s;
+            }
+            .aria2-history-limit-input:focus {
+                outline: none; border-color: var(--aria2-accent);
+            }
+            .aria2-history-limit-input:disabled { opacity: 0.5; cursor: not-allowed; }
 
             /* 历史卡片 */
             .aria2-history-card {
@@ -1625,8 +1638,7 @@
         const prefs = StorageManager.getPrefs();
         const items = [
             { key: 'autoNotification', icon: '🔔', title: '桌面通知', desc: '发送成功后显示桌面通知' },
-            { key: 'captureRightClick', icon: '🖱️', title: '右键捕获', desc: '在网页右键时自动捕获下载链接' },
-            { key: 'historyEnabled', icon: '📜', title: '任务历史', desc: '记录最近 ' + prefs.historyLimit + ' 条任务' }
+            { key: 'captureRightClick', icon: '🖱️', title: '右键捕获', desc: '在网页右键时自动捕获下载链接' }
         ];
         list.innerHTML = items.map(item => `
             <div class="aria2-pref-card">
@@ -1636,7 +1648,19 @@
                 </div>
                 <div class="aria2-switch" data-pref="${item.key}" data-on="${prefs[item.key] ? '1' : '0'}"></div>
             </div>
-        `).join('');
+        `).join('') + `
+            <div class="aria2-pref-card">
+                <div class="aria2-pref-card-info">
+                    <div class="aria2-pref-card-title">📜 任务历史</div>
+                    <div class="aria2-pref-card-desc">
+                        记录最近
+                        <input type="number" class="aria2-history-limit-input" value="${prefs.historyLimit}" min="10" max="500" step="10"${prefs.historyEnabled ? '' : ' disabled'}>
+                        条任务（10-500）
+                    </div>
+                </div>
+                <div class="aria2-switch" data-pref="historyEnabled" data-on="${prefs.historyEnabled ? '1' : '0'}"></div>
+            </div>
+        `;
 
         list.querySelectorAll('.aria2-switch').forEach(sw => {
             sw.addEventListener('click', function () {
@@ -1645,11 +1669,30 @@
                 newPrefs[key] = !newPrefs[key];
                 StorageManager.setPrefs(newPrefs);
                 sw.setAttribute('data-on', newPrefs[key] ? '1' : '0');
-                if (key === 'historyEnabled' && !newPrefs[key]) {
-                    showToast('已关闭历史记录（已有历史保留）', 'success');
+                if (key === 'historyEnabled') {
+                    // 同步输入框的 disabled 状态
+                    const limitInput = list.querySelector('.aria2-history-limit-input');
+                    if (limitInput) limitInput.disabled = !newPrefs[key];
+                    if (!newPrefs[key]) {
+                        showToast('已关闭历史记录（已有历史保留）', 'success');
+                    }
                 }
             });
         });
+
+        // 历史条数自定义
+        const limitInput = list.querySelector('.aria2-history-limit-input');
+        if (limitInput) {
+            limitInput.addEventListener('change', function () {
+                let val = parseInt(limitInput.value, 10);
+                if (isNaN(val) || val < 10) val = 10;
+                if (val > 500) val = 500;
+                limitInput.value = val;
+                const newPrefs = Object.assign({}, StorageManager.getPrefs(), { historyLimit: val });
+                StorageManager.setPrefs(newPrefs);
+                showToast('已设置保存最近 ' + val + ' 条历史', 'success');
+            });
+        }
     }
 
     function exportConfig() {
