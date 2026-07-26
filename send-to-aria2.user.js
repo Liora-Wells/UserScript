@@ -1087,8 +1087,294 @@
             sendBtn.textContent = '发送下载';
         }
     }
+    // 历史 Tab 当前过滤状态
+    let historyFilter = 'all'; // 'all' | 'sent' | 'active' | 'complete' | 'error'
+    let historySearch = '';
+
     function renderHistoryTab(body, footer) {
-        body.innerHTML = '<div class="aria2-tips">历史 Tab 待实现（任务 8）</div>';
+        body.innerHTML = `
+            <div class="aria2-chip-row" id="aria2-history-chips"></div>
+            <div class="aria2-group">
+                <input type="text" class="aria2-input" id="aria2-history-search" placeholder="搜索 URL / 文件名 / GID">
+            </div>
+            <div id="aria2-history-list"></div>
+            <div class="aria2-tips" id="aria2-history-count"></div>
+        `;
+
+        footer.innerHTML = `
+            <button class="aria2-btn aria2-btn-default" id="aria2-history-refresh-btn">🔄刷新活动任务</button>
+            <button class="aria2-btn aria2-btn-danger" id="aria2-history-clear-btn">清空历史</button>
+        `;
+
+        renderHistoryChips();
+        renderHistoryList();
+
+        document.getElementById('aria2-history-search').addEventListener('input', function (e) {
+            historySearch = e.target.value.trim().toLowerCase();
+            renderHistoryList();
+        });
+
+        document.getElementById('aria2-history-refresh-btn').addEventListener('click', refreshActiveHistory);
+        document.getElementById('aria2-history-clear-btn').addEventListener('click', function () {
+            showConfirmBar('aria2-history-clear-btn', '确定清空全部历史？', async function () {
+                StorageManager.clearHistory();
+                renderHistoryList();
+                showToast('历史已清空', 'success');
+            });
+        });
+    }
+
+    function renderHistoryChips() {
+        const all = StorageManager.getHistory();
+        const counts = {
+            all: all.length,
+            sent: all.filter(x => x.status === 'sent').length,
+            active: all.filter(x => x.status === 'active' || x.status === 'waiting' || x.status === 'pending').length,
+            complete: all.filter(x => x.status === 'complete').length,
+            error: all.filter(x => x.status === 'error' || x.status === 'unknown').length
+        };
+        const chips = [
+            { key: 'all', label: '全部' },
+            { key: 'sent', label: '已发送' },
+            { key: 'active', label: '活动中' },
+            { key: 'complete', label: '已完成' },
+            { key: 'error', label: '错误/未知' }
+        ];
+        const html = chips.map(c =>
+            `<button class="aria2-chip" data-filter="${c.key}" data-active="${historyFilter === c.key ? '1' : '0'}">${c.label} (${counts[c.key]})</button>`
+        ).join('');
+        const container = document.getElementById('aria2-history-chips');
+        container.innerHTML = html;
+        container.querySelectorAll('.aria2-chip').forEach(chip => {
+            chip.addEventListener('click', function () {
+                historyFilter = chip.getAttribute('data-filter');
+                renderHistoryChips();
+                renderHistoryList();
+            });
+        });
+    }
+
+    function filterHistoryItems() {
+        let items = StorageManager.getHistory();
+        if (historyFilter !== 'all') {
+            const map = {
+                sent: ['sent'],
+                active: ['active', 'waiting', 'pending'],
+                complete: ['complete'],
+                error: ['error', 'unknown']
+            };
+            const allowed = map[historyFilter] || [];
+            items = items.filter(x => allowed.includes(x.status));
+        }
+        if (historySearch) {
+            items = items.filter(x => {
+                const text = (x.urls || []).join(' ') + ' ' + (x.filename || '') + ' ' + (x.gid || '');
+                return text.toLowerCase().includes(historySearch);
+            });
+        }
+        return items;
+    }
+
+    function renderHistoryList() {
+        const list = document.getElementById('aria2-history-list');
+        const count = document.getElementById('aria2-history-count');
+        const items = filterHistoryItems();
+        if (items.length === 0) {
+            list.innerHTML = '<div class="aria2-tips">无匹配记录</div>';
+            count.textContent = '';
+            return;
+        }
+        count.textContent = '共 ' + items.length + ' 条';
+        list.innerHTML = items.map(renderHistoryCard).join('');
+        bindHistoryCardEvents();
+    }
+
+    function renderHistoryCard(item) {
+        const statusInfo = STATUS_MAP[item.status] || STATUS_MAP.unknown;
+        const server = StorageManager.getServerById(item.serverId);
+        const serverName = server ? server.name : '未知服务器';
+        const urlText = (item.urls || []).join('\n');
+        const meta = '→ ' + escapeHtml(serverName) +
+            ' | ' + escapeHtml(item.saveDir || '默认路径') +
+            ' | GID: ' + escapeHtml(item.gid || '-');
+        const progress = item.progress != null ? '进度: ' + item.progress + '%' : '';
+        const speed = item.speed ? ' 速度: ' + item.speed : '';
+        return `
+            <div class="aria2-history-card" data-id="${escapeHtml(item.id)}">
+                <div class="aria2-history-card-head">
+                    <span class="aria2-history-card-status" style="background:${statusInfo.color}">${escapeHtml(statusInfo.label)}</span>
+                    <span class="aria2-tips">${escapeHtml(formatRelativeTime(item.createdAt))}</span>
+                </div>
+                <div class="aria2-history-card-url">${escapeHtml(urlText)}</div>
+                <div class="aria2-history-card-meta">${meta}</div>
+                ${progress || speed ? '<div class="aria2-history-card-meta">' + escapeHtml(progress + speed) + '</div>' : ''}
+                <div class="aria2-history-card-actions">
+                    <button data-action="query">🔄查询</button>
+                    <button data-action="resend">🔁重发</button>
+                    <button data-action="copy">📋复制URL</button>
+                    <button data-action="delete">🗑删除</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function bindHistoryCardEvents() {
+        const list = document.getElementById('aria2-history-list');
+        if (!list) return;
+        // 事件委托
+        list.querySelectorAll('.aria2-history-card').forEach(card => {
+            const id = card.getAttribute('data-id');
+            card.querySelectorAll('button[data-action]').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    const action = btn.getAttribute('data-action');
+                    handleHistoryAction(id, action);
+                });
+            });
+        });
+    }
+
+    async function handleHistoryAction(id, action) {
+        const items = StorageManager.getHistory();
+        const item = items.find(x => x.id === id);
+        if (!item) return;
+
+        if (action === 'delete') {
+            StorageManager.removeHistoryItem(id);
+            renderHistoryChips();
+            renderHistoryList();
+            return;
+        }
+
+        if (action === 'copy') {
+            GM_setClipboard((item.urls || []).join('\n'));
+            showToast('已复制 URL', 'success');
+            return;
+        }
+
+        if (action === 'resend') {
+            const server = StorageManager.getServerById(item.serverId) || StorageManager.getCurrentServer();
+            try {
+                const options = buildOptions({
+                    filename: item.filename,
+                    saveDir: item.saveDir,
+                    useProxy: item.usedProxy,
+                    headers: {}
+                }, server);
+                const gid = await new Aria2RPC(server).addUri(item.urls, options);
+                StorageManager.addHistoryItem({
+                    id: genId('task'),
+                    serverId: server.id,
+                    urls: item.urls,
+                    filename: item.filename,
+                    saveDir: item.saveDir,
+                    usedProxy: item.usedProxy,
+                    gid: gid,
+                    status: 'sent',
+                    createdAt: Date.now(),
+                    lastQueryAt: 0
+                });
+                renderHistoryChips();
+                renderHistoryList();
+                showToast('重发成功，新 GID: ' + gid, 'success');
+            } catch (e) {
+                showToast('重发失败: ' + e.message, 'error');
+            }
+            return;
+        }
+
+        if (action === 'query') {
+            await queryHistoryStatus(item);
+        }
+    }
+
+    async function queryHistoryStatus(item) {
+        if (!item.gid) {
+            showToast('该任务无 GID，无法查询', 'error');
+            return;
+        }
+        const server = StorageManager.getServerById(item.serverId) || StorageManager.getCurrentServer();
+        try {
+            const status = await new Aria2RPC(server).tellStatus(item.gid, [
+                'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode'
+            ]);
+            const patch = {
+                status: status.status,
+                lastQueryAt: Date.now()
+            };
+            if (status.status === 'active') {
+                const total = parseInt(status.totalLength || 0, 10);
+                const done = parseInt(status.completedLength || 0, 10);
+                patch.progress = total > 0 ? Math.round(done / total * 100) : 0;
+                patch.speed = formatBytes(parseInt(status.downloadSpeed || 0, 10)) + '/s';
+            }
+            if (status.status === 'removed') patch.status = 'unknown';
+            StorageManager.updateHistoryItem(item.id, patch);
+            renderHistoryChips();
+            renderHistoryList();
+        } catch (e) {
+            // 任务可能已被删除
+            StorageManager.updateHistoryItem(item.id, { status: 'unknown', lastQueryAt: Date.now() });
+            renderHistoryChips();
+            renderHistoryList();
+            showToast('查询失败: ' + e.message, 'error');
+        }
+    }
+
+    /**
+     * 批量刷新所有活动任务（用 tellActive 一次拉取）
+     */
+    async function refreshActiveHistory() {
+        const servers = StorageManager.getServers() || [];
+        const serverMap = {};
+        servers.forEach(s => serverMap[s.id] = s);
+
+        // 收集所有 sent/active/waiting 状态的任务
+        const items = StorageManager.getHistory();
+        const activeItems = items.filter(x =>
+            x.gid && ['sent', 'active', 'waiting', 'pending'].includes(x.status)
+        );
+
+        // 按服务器分组查询
+        const byServer = {};
+        activeItems.forEach(x => {
+            if (!byServer[x.serverId]) byServer[x.serverId] = [];
+            byServer[x.serverId].push(x);
+        });
+
+        for (const serverId of Object.keys(byServer)) {
+            const server = serverMap[serverId];
+            if (!server) continue;
+            const rpc = new Aria2RPC(server);
+            let activeList = [];
+            try {
+                activeList = await rpc.tellActive();
+            } catch (e) {
+                continue; // 该服务器查询失败，跳过
+            }
+            const gidToStatus = {};
+            activeList.forEach(s => { gidToStatus[s.gid] = s; });
+
+            byServer[serverId].forEach(item => {
+                const s = gidToStatus[item.gid];
+                if (s) {
+                    const total = parseInt(s.totalLength || 0, 10);
+                    const done = parseInt(s.completedLength || 0, 10);
+                    StorageManager.updateHistoryItem(item.id, {
+                        status: s.status,
+                        progress: total > 0 ? Math.round(done / total * 100) : 0,
+                        speed: formatBytes(parseInt(s.downloadSpeed || 0, 10)) + '/s',
+                        lastQueryAt: Date.now()
+                    });
+                } else {
+                    // 不在活动列表中，可能已完成或被删除，标记为 unknown 待下次手动查询
+                    StorageManager.updateHistoryItem(item.id, { status: 'unknown', lastQueryAt: Date.now() });
+                }
+            });
+        }
+
+        renderHistoryChips();
+        renderHistoryList();
+        showToast('活动任务已刷新', 'success');
     }
     function renderSettingsTab(body, footer) {
         body.innerHTML = '<div class="aria2-tips">设置 Tab 待实现（任务 10）</div>';
