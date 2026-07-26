@@ -26,6 +26,52 @@
     'use strict';
 
     // ============================================================
+    // 1. 常量定义
+    // ============================================================
+
+    const STORAGE_KEYS = {
+        servers: 'aria2_servers',
+        lastServerId: 'aria2_last_server_id',
+        history: 'aria2_history',
+        prefs: 'aria2_prefs',
+        legacyConfig: 'aria2_config' // 旧版兼容键
+    };
+
+    const PROTOCOL_WHITELIST = ['http:', 'https:', 'ftp:', 'magnet:', 'thunder:', 'ed2k:', 'sftp:'];
+
+    const DEFAULT_PREFS = {
+        theme: 'dark',
+        autoNotification: true,
+        historyEnabled: true,
+        historyLimit: 100,
+        captureRightClick: true
+    };
+
+    const DEFAULT_SERVER = {
+        id: 'srv_default',
+        name: '本机 Aria2',
+        rpcUrl: 'http://localhost:6800/jsonrpc',
+        rpcSecret: '',
+        defaultDir: '',
+        proxyUrl: '',
+        enableProxy: false,
+        headers: { referer: '', userAgent: '', cookie: '' },
+        createdAt: 0
+    };
+
+    // 状态显示映射（Aria2 原生 status → 显示用）
+    const STATUS_MAP = {
+        complete: { label: '已完成', color: '#67c23a' },
+        active:   { label: '活动中', color: '#409eff' },
+        waiting:  { label: '等待中', color: '#e6a23c' },
+        paused:   { label: '已暂停', color: '#909399' },
+        error:    { label: '错误',   color: '#f56c6c' },
+        removed:  { label: '已删除', color: '#909399' },
+        sent:     { label: '已发送', color: '#909399' },
+        unknown:  { label: '未知',   color: '#909399' }
+    };
+
+    // ============================================================
     // 模块分区（后续任务按此顺序填充）
     // ============================================================
     // 1. 常量定义（DEFAULTS / STORAGE_KEYS / PROTOCOL_WHITELIST）
