@@ -490,6 +490,61 @@
     }
 
     // ============================================================
+    // 5. 右键捕获
+    // ============================================================
+
+    let lastCapturedUrl = '';
+    let lastCapturedFilename = '';
+
+    /**
+     * 从右键事件捕获 URL（规格 3.1 优先级链）
+     */
+    function captureUrlFromEvent(e) {
+        const target = e.target;
+        if (!target) return { url: '', filename: '' };
+
+        // 优先级 1: <a href>
+        const link = target.closest('a[href]');
+        if (link && link.href) {
+            return {
+                url: link.href,
+                filename: (link.download && link.download.trim()) || getFileNameFromUrl(link.href)
+            };
+        }
+
+        const tag = target.tagName;
+
+        // 优先级 2: <img>
+        if (tag === 'IMG' && target.src) {
+            return { url: target.src, filename: getFileNameFromUrl(target.src) };
+        }
+
+        // 优先级 3/4: <video>/<audio> 及其 <source>
+        if (tag === 'VIDEO' || tag === 'AUDIO') {
+            const source = target.querySelector('source[src]');
+            if (source && source.src) {
+                return { url: source.src, filename: getFileNameFromUrl(source.src) };
+            }
+            if (target.src) {
+                return { url: target.src, filename: getFileNameFromUrl(target.src) };
+            }
+        }
+
+        // 兜底：不捕获
+        return { url: '', filename: '' };
+    }
+
+    function registerContextMenuListener() {
+        document.addEventListener('contextmenu', function (e) {
+            const prefs = StorageManager.getPrefs();
+            if (!prefs.captureRightClick) return;
+            const captured = captureUrlFromEvent(e);
+            lastCapturedUrl = captured.url;
+            lastCapturedFilename = captured.filename;
+        }, true);
+    }
+
+    // ============================================================
     // 模块分区（后续任务按此顺序填充）
     // ============================================================
     // 1. 常量定义（DEFAULTS / STORAGE_KEYS / PROTOCOL_WHITELIST）
@@ -507,6 +562,7 @@
     // ============================================================
     function init() {
         StorageManager.migrateIfNeeded();
+        registerContextMenuListener();
         const server = StorageManager.getCurrentServer();
         console.log('[Aria2] 初始化完成，当前服务器：', server && server.name);
         GM_registerMenuCommand('📥 打开下载面板', function () {
