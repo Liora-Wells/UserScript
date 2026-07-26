@@ -545,6 +545,331 @@
     }
 
     // ============================================================
+    // 6. UI 渲染
+    // ============================================================
+
+    // ---------- 6.1 样式注入 ----------
+    let styleInjected = false;
+
+    function injectStyles() {
+        if (styleInjected) return;
+        styleInjected = true;
+        GM_addStyle(`
+            /* 所有样式限定在 .aria2-app 作用域内，不污染宿主页面 */
+            .aria2-app {
+                /* 暗黑主题（默认） */
+                --aria2-bg-primary: #1f1f1f;
+                --aria2-bg-secondary: #2a2a2a;
+                --aria2-bg-mask: rgba(0, 0, 0, 0.7);
+                --aria2-text-primary: #f5f5f5;
+                --aria2-text-secondary: #dddddd;
+                --aria2-text-tips: #aaaaaa;
+                --aria2-border-color: #444444;
+                --aria2-btn-default-bg: #333333;
+                --aria2-btn-default-hover: #444444;
+                --aria2-btn-default-text: #dddddd;
+                --aria2-input-bg: #2a2a2a;
+                --aria2-input-text: #ffffff;
+                --aria2-input-placeholder: #888888;
+                --aria2-shadow-color: rgba(0, 0, 0, 0.3);
+                --aria2-accent: #409eff;
+            }
+            .aria2-app[data-aria2-theme="light"] {
+                --aria2-bg-primary: #ffffff;
+                --aria2-bg-secondary: #f8f9fa;
+                --aria2-bg-mask: rgba(0, 0, 0, 0.5);
+                --aria2-text-primary: #333333;
+                --aria2-text-secondary: #555555;
+                --aria2-text-tips: #666666;
+                --aria2-border-color: #dddddd;
+                --aria2-btn-default-bg: #f5f5f5;
+                --aria2-btn-default-hover: #eeeeee;
+                --aria2-btn-default-text: #666666;
+                --aria2-input-bg: #ffffff;
+                --aria2-input-text: #333333;
+                --aria2-input-placeholder: #999999;
+                --aria2-shadow-color: rgba(0, 0, 0, 0.15);
+            }
+
+            .aria2-app * { box-sizing: border-box; }
+
+            .aria2-mask {
+                position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                background: var(--aria2-bg-mask); z-index: 999998;
+                display: none; align-items: center; justify-content: center;
+                font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            }
+            .aria2-mask[data-show="1"] { display: flex; }
+
+            .aria2-modal {
+                width: 560px; max-width: 90vw; max-height: 90vh;
+                background: var(--aria2-bg-primary); border-radius: 10px;
+                box-shadow: 0 8px 30px var(--aria2-shadow-color);
+                overflow: hidden; display: flex; flex-direction: column;
+                color: var(--aria2-text-primary);
+            }
+            .aria2-header {
+                padding: 16px 22px; border-bottom: 1px solid var(--aria2-border-color);
+                display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;
+            }
+            .aria2-title { font-size: 18px; font-weight: 600; margin: 0; }
+            .aria2-close {
+                width: 28px; height: 28px; border: none; background: none;
+                font-size: 22px; color: var(--aria2-text-tips); cursor: pointer;
+                border-radius: 4px; display: flex; align-items: center; justify-content: center;
+            }
+            .aria2-close:hover { color: var(--aria2-text-primary); background: var(--aria2-btn-default-bg); }
+
+            .aria2-toolbar {
+                padding: 12px 22px; border-bottom: 1px solid var(--aria2-border-color);
+                display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap;
+            }
+            .aria2-toolbar select, .aria2-toolbar button {
+                padding: 6px 12px; border: 1px solid var(--aria2-border-color);
+                border-radius: 6px; background: var(--aria2-bg-secondary);
+                color: var(--aria2-text-primary); font-size: 13px; cursor: pointer;
+                font-family: inherit;
+            }
+            .aria2-toolbar button:hover { background: var(--aria2-btn-default-hover); }
+            .aria2-toolbar .aria2-spacer { flex-grow: 1; }
+
+            .aria2-tabs {
+                display: flex; border-bottom: 1px solid var(--aria2-border-color); flex-shrink: 0;
+            }
+            .aria2-tab {
+                padding: 12px 20px; border: none; background: none;
+                color: var(--aria2-text-secondary); cursor: pointer; font-size: 14px;
+                font-family: inherit; border-bottom: 2px solid transparent;
+            }
+            .aria2-tab[data-active="1"] {
+                color: var(--aria2-accent); border-bottom-color: var(--aria2-accent);
+            }
+
+            .aria2-body { padding: 22px; overflow-y: auto; flex-grow: 1; }
+
+            .aria2-footer {
+                padding: 12px 22px; border-top: 1px solid var(--aria2-border-color);
+                display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0;
+            }
+
+            .aria2-btn {
+                padding: 8px 16px; border-radius: 6px; border: none;
+                font-size: 14px; cursor: pointer; font-family: inherit; font-weight: 500;
+                line-height: 1.4;
+            }
+            .aria2-btn-default { background: var(--aria2-btn-default-bg); color: var(--aria2-btn-default-text); }
+            .aria2-btn-default:hover { background: var(--aria2-btn-default-hover); }
+            .aria2-btn-primary { background: var(--aria2-accent); color: #fff; }
+            .aria2-btn-primary:hover { filter: brightness(1.1); }
+            .aria2-btn-danger { background: #f56c6c; color: #fff; }
+            .aria2-btn-danger:hover { filter: brightness(1.1); }
+            .aria2-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+            .aria2-group { margin-bottom: 16px; }
+            .aria2-label { display: block; font-size: 13px; color: var(--aria2-text-secondary); margin-bottom: 6px; font-weight: 500; }
+            .aria2-input, .aria2-textarea, .aria2-select {
+                width: 100%; padding: 9px 12px; border: 1px solid var(--aria2-border-color);
+                border-radius: 6px; font-size: 14px; color: var(--aria2-input-text);
+                background: var(--aria2-input-bg); font-family: inherit; line-height: 1.5;
+                transition: border-color 0.2s;
+            }
+            .aria2-textarea { resize: vertical; min-height: 90px; }
+            .aria2-input:focus, .aria2-textarea:focus, .aria2-select:focus {
+                outline: none; border-color: var(--aria2-accent); box-shadow: 0 0 0 2px rgba(64,158,255,0.1);
+            }
+            .aria2-tips { margin-top: 6px; font-size: 12px; color: var(--aria2-text-tips); line-height: 1.4; }
+
+            .aria2-row { display: flex; gap: 12px; align-items: center; }
+            .aria2-row > * { flex: 1; }
+            .aria2-checkbox-label { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--aria2-text-secondary); cursor: pointer; user-select: none; }
+
+            .aria2-status {
+                margin-top: 12px; font-size: 13px; padding: 8px 12px; border-radius: 4px;
+                display: none; line-height: 1.4;
+            }
+            .aria2-status[data-type="success"] { display: block; background: rgba(103,194,58,0.1); color: #67c23a; border: 1px solid rgba(103,194,58,0.2); }
+            .aria2-status[data-type="error"]   { display: block; background: rgba(245,108,108,0.1); color: #f56c6c; border: 1px solid rgba(245,108,108,0.2); }
+
+            .aria2-toast {
+                position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+                background: var(--aria2-bg-secondary); color: var(--aria2-text-primary);
+                padding: 10px 20px; border-radius: 6px; box-shadow: 0 4px 12px var(--aria2-shadow-color);
+                z-index: 9999999; font-size: 14px; max-width: 80vw;
+                display: none; align-items: center; gap: 8px;
+            }
+            .aria2-toast[data-show="1"] { display: flex; }
+            .aria2-toast[data-type="success"] { border-left: 4px solid #67c23a; }
+            .aria2-toast[data-type="error"]   { border-left: 4px solid #f56c6c; }
+
+            .aria2-confirm-bar {
+                margin-top: 8px; padding: 10px; background: var(--aria2-bg-secondary);
+                border-radius: 6px; display: none; align-items: center; gap: 10px;
+                font-size: 13px;
+            }
+            .aria2-confirm-bar[data-show="1"] { display: flex; }
+
+            /* 折叠区块 */
+            .aria2-collapse-toggle { cursor: pointer; color: var(--aria2-text-secondary); font-size: 13px; user-select: none; display: inline-flex; align-items: center; gap: 4px; }
+            .aria2-collapse-body { display: none; margin-top: 12px; }
+            .aria2-collapse-body[data-show="1"] { display: block; }
+
+            /* 服务器卡片 */
+            .aria2-server-card {
+                border: 1px solid var(--aria2-border-color); border-radius: 8px;
+                padding: 14px; margin-bottom: 10px; background: var(--aria2-bg-secondary);
+            }
+            .aria2-server-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+            .aria2-server-card-name { font-weight: 600; font-size: 15px; }
+            .aria2-server-card-meta { font-size: 12px; color: var(--aria2-text-tips); margin-top: 4px; line-height: 1.5; }
+            .aria2-server-card-actions { display: flex; gap: 6px; }
+            .aria2-server-card-actions button { padding: 4px 10px; font-size: 12px; }
+
+            /* 偏好卡片 */
+            .aria2-pref-card {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 14px; border: 1px solid var(--aria2-border-color); border-radius: 8px;
+                margin-bottom: 10px; background: var(--aria2-bg-secondary);
+            }
+            .aria2-pref-card-info { flex-grow: 1; }
+            .aria2-pref-card-title { font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+            .aria2-pref-card-desc { font-size: 12px; color: var(--aria2-text-tips); margin-top: 4px; }
+
+            /* 开关（简易 toggle） */
+            .aria2-switch {
+                position: relative; width: 40px; height: 22px; background: var(--aria2-border-color);
+                border-radius: 11px; cursor: pointer; transition: background 0.2s; flex-shrink: 0;
+            }
+            .aria2-switch[data-on="1"] { background: var(--aria2-accent); }
+            .aria2-switch::after {
+                content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+                background: #fff; border-radius: 50%; transition: left 0.2s;
+            }
+            .aria2-switch[data-on="1"]::after { left: 20px; }
+
+            /* 历史卡片 */
+            .aria2-history-card {
+                border: 1px solid var(--aria2-border-color); border-radius: 8px;
+                padding: 12px; margin-bottom: 10px; background: var(--aria2-bg-secondary);
+            }
+            .aria2-history-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+            .aria2-history-card-status { font-size: 12px; padding: 2px 8px; border-radius: 10px; color: #fff; }
+            .aria2-history-card-url { font-size: 13px; word-break: break-all; margin-bottom: 6px; }
+            .aria2-history-card-meta { font-size: 12px; color: var(--aria2-text-tips); margin-bottom: 8px; }
+            .aria2-history-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+            .aria2-history-card-actions button { padding: 4px 10px; font-size: 12px; }
+
+            .aria2-chip-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+            .aria2-chip {
+                padding: 4px 10px; border-radius: 14px; border: 1px solid var(--aria2-border-color);
+                background: var(--aria2-bg-secondary); color: var(--aria2-text-secondary);
+                font-size: 12px; cursor: pointer;
+            }
+            .aria2-chip[data-active="1"] { background: var(--aria2-accent); color: #fff; border-color: var(--aria2-accent); }
+        `);
+    }
+
+    // ---------- 6.2 弹窗外壳 ----------
+    let modalCreated = false;
+    let activeTab = 'download'; // 'download' | 'history' | 'settings'
+
+    function ensureModal() {
+        injectStyles();
+        if (modalCreated) return document.getElementById('aria2-app');
+        modalCreated = true;
+
+        const app = document.createElement('div');
+        app.className = 'aria2-app';
+        app.id = 'aria2-app';
+        app.setAttribute('data-aria2-theme', StorageManager.getPrefs().theme);
+        app.setAttribute('data-ghhelper-nt', '1'); // 防翻译脚本干扰
+
+        app.innerHTML = `
+            <div class="aria2-mask" id="aria2-mask">
+                <div class="aria2-modal" role="dialog" aria-modal="true">
+                    <div class="aria2-header">
+                        <h3 class="aria2-title">发送到Aria2下载</h3>
+                        <button class="aria2-close" id="aria2-close" title="关闭">×</button>
+                    </div>
+                    <div class="aria2-toolbar">
+                        <span>服务器:</span>
+                        <select id="aria2-server-select"></select>
+                        <button id="aria2-test-btn" title="测试当前服务器连接">⚡测试</button>
+                        <div class="aria2-spacer"></div>
+                        <button id="aria2-theme-btn" title="切换主题">🌙</button>
+                    </div>
+                    <div class="aria2-tabs">
+                        <button class="aria2-tab" data-tab="download">📥 下载</button>
+                        <button class="aria2-tab" data-tab="history">📜 历史</button>
+                        <button class="aria2-tab" data-tab="settings">⚙️ 设置</button>
+                    </div>
+                    <div class="aria2-body" id="aria2-body"></div>
+                    <div class="aria2-footer" id="aria2-footer"></div>
+                </div>
+            </div>
+            <div class="aria2-toast" id="aria2-toast"></div>
+        `;
+        document.body.appendChild(app);
+        return app;
+    }
+
+    function openModal(tab) {
+        const app = ensureModal();
+        if (tab) activeTab = tab;
+        refreshToolbar();
+        refreshTabs();
+        renderActiveTab();
+        document.getElementById('aria2-mask').setAttribute('data-show', '1');
+        // 快捷键绑定（任务 9 实现，此处空实现占位）
+        if (typeof onBindModalKeys === 'function') onBindModalKeys();
+    }
+
+    function closeModal() {
+        const mask = document.getElementById('aria2-mask');
+        if (mask) mask.setAttribute('data-show', '0');
+        if (typeof onUnbindModalKeys === 'function') onUnbindModalKeys();
+    }
+
+    function refreshToolbar() {
+        const select = document.getElementById('aria2-server-select');
+        const servers = StorageManager.getServers() || [];
+        const currentId = (StorageManager.getCurrentServer() || {}).id;
+        select.innerHTML = servers.map(s =>
+            `<option value="${escapeHtml(s.id)}"${s.id === currentId ? ' selected' : ''}>${escapeHtml(s.name)}</option>`
+        ).join('');
+
+        // 主题按钮
+        const themeBtn = document.getElementById('aria2-theme-btn');
+        const prefs = StorageManager.getPrefs();
+        themeBtn.textContent = prefs.theme === 'dark' ? '☀️' : '🌙';
+    }
+
+    function refreshTabs() {
+        const tabs = document.querySelectorAll('.aria2-tab');
+        tabs.forEach(t => t.setAttribute('data-active', t.getAttribute('data-tab') === activeTab ? '1' : '0'));
+    }
+
+    function renderActiveTab() {
+        const body = document.getElementById('aria2-body');
+        const footer = document.getElementById('aria2-footer');
+        body.innerHTML = '';
+        footer.innerHTML = '';
+        if (activeTab === 'download') renderDownloadTab(body, footer);
+        else if (activeTab === 'history') renderHistoryTab(body, footer);
+        else if (activeTab === 'settings') renderSettingsTab(body, footer);
+    }
+
+    // 临时占位（任务 7/8/10 替换）
+    function renderDownloadTab(body, footer) {
+        body.innerHTML = '<div class="aria2-tips">下载 Tab 待实现（任务 7）</div>';
+    }
+    function renderHistoryTab(body, footer) {
+        body.innerHTML = '<div class="aria2-tips">历史 Tab 待实现（任务 8）</div>';
+    }
+    function renderSettingsTab(body, footer) {
+        body.innerHTML = '<div class="aria2-tips">设置 Tab 待实现（任务 10）</div>';
+    }
+
+    // ============================================================
     // 模块分区（后续任务按此顺序填充）
     // ============================================================
     // 1. 常量定义（DEFAULTS / STORAGE_KEYS / PROTOCOL_WHITELIST）
@@ -563,10 +888,8 @@
     function init() {
         StorageManager.migrateIfNeeded();
         registerContextMenuListener();
-        const server = StorageManager.getCurrentServer();
-        console.log('[Aria2] 初始化完成，当前服务器：', server && server.name);
         GM_registerMenuCommand('📥 打开下载面板', function () {
-            alert('骨架：下载面板待实现\n当前服务器：' + (server ? server.name : '无'));
+            openModal('download');
         });
     }
 
