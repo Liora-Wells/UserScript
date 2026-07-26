@@ -1895,8 +1895,105 @@
     function init() {
         StorageManager.migrateIfNeeded();
         registerContextMenuListener();
-        GM_registerMenuCommand('📥 打开下载面板', function () {
+
+        GM_registerMenuCommand('📥 发送到Aria2（用右键链接）', function () {
+            if (!lastCapturedUrl) {
+                openModal('download');
+                setTimeout(function () {
+                    showToast('未捕获到链接，请手动粘贴', 'error');
+                }, 100);
+                return;
+            }
             openModal('download');
+            setTimeout(function () {
+                const urlInput = document.getElementById('aria2-url-input');
+                const filenameInput = document.getElementById('aria2-filename-input');
+                if (urlInput) {
+                    urlInput.value = lastCapturedUrl;
+                    if (filenameInput) filenameInput.value = lastCapturedFilename || '';
+                    urlInput.dispatchEvent(new Event('input'));
+                }
+            }, 50);
+        });
+
+        GM_registerMenuCommand('⚡ 直接发送（不弹窗）', async function () {
+            if (!lastCapturedUrl) {
+                showToast('未捕获到链接', 'error');
+                return;
+            }
+            if (isInlineUrl(lastCapturedUrl)) {
+                showToast('该链接为内联资源，无法发送', 'error');
+                return;
+            }
+            if (!isValidUrl(lastCapturedUrl)) {
+                showToast('链接协议不支持', 'error');
+                return;
+            }
+            const server = StorageManager.getCurrentServer();
+            if (!server) { showToast('无服务器配置', 'error'); return; }
+            try {
+                const options = buildOptions({
+                    filename: lastCapturedFilename,
+                    saveDir: '',
+                    useProxy: server.enableProxy,
+                    headers: {}
+                }, server);
+                const gid = await new Aria2RPC(server).addUri([lastCapturedUrl], options);
+                StorageManager.addHistoryItem({
+                    id: genId('task'),
+                    serverId: server.id,
+                    urls: [lastCapturedUrl],
+                    filename: lastCapturedFilename,
+                    saveDir: '',
+                    usedProxy: server.enableProxy,
+                    gid: gid,
+                    status: 'sent',
+                    createdAt: Date.now(),
+                    lastQueryAt: 0
+                });
+                if (StorageManager.getPrefs().autoNotification) {
+                    GM_notification({ title: '发送成功', text: '任务已发送到 Aria2', timeout: 3000 });
+                }
+                showToast('已发送，GID: ' + gid, 'success');
+            } catch (e) {
+                showToast('发送失败: ' + e.message, 'error');
+            }
+        });
+
+        GM_registerMenuCommand('✏️ 发送并重命名', function () {
+            if (!lastCapturedUrl) {
+                openModal('download');
+                setTimeout(function () {
+                    showToast('未捕获到链接，请手动粘贴', 'error');
+                }, 100);
+                return;
+            }
+            openModal('download');
+            setTimeout(function () {
+                const urlInput = document.getElementById('aria2-url-input');
+                const filenameInput = document.getElementById('aria2-filename-input');
+                if (urlInput) {
+                    urlInput.value = lastCapturedUrl;
+                    if (filenameInput) {
+                        filenameInput.value = lastCapturedFilename || '';
+                        filenameInput.focus();
+                        filenameInput.select();
+                    }
+                    urlInput.dispatchEvent(new Event('input'));
+                }
+            }, 50);
+        });
+
+        GM_registerMenuCommand('📜 打开下载面板', function () {
+            openModal('download');
+            setTimeout(function () {
+                const urlInput = document.getElementById('aria2-url-input');
+                if (urlInput) urlInput.focus();
+            }, 50);
+        });
+
+        GM_registerMenuCommand('⚙️ 配置设置', function () {
+            openModal('settings');
         });
     }
 
