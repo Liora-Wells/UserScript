@@ -1468,11 +1468,9 @@
             }
             // Ctrl+S 保存（设置 Tab 服务器编辑表单内）
             if (e.ctrlKey && (e.key === 's' || e.key === 'S') && activeTab === 'settings') {
+                e.preventDefault(); // 一律阻止浏览器默认保存行为
                 const saveBtn = document.getElementById('aria2-server-form-save-btn');
-                if (saveBtn) {
-                    e.preventDefault();
-                    saveBtn.click();
-                }
+                if (saveBtn) saveBtn.click();
                 return;
             }
             // Ctrl+1/2/3 切换 Tab
@@ -1501,21 +1499,27 @@
         if (!app || app.getAttribute('data-bound')) return;
         app.setAttribute('data-bound', '1');
 
-        // 关闭按钮
-        document.getElementById('aria2-close').addEventListener('click', closeModal);
-        document.getElementById('aria2-mask').addEventListener('click', function (e) {
+        // 批量获取关键元素，缺失任一则跳过对应绑定（避免抛异常导致后续绑定丢失）
+        const closeBtn = document.getElementById('aria2-close');
+        const mask = document.getElementById('aria2-mask');
+        const serverSelect = document.getElementById('aria2-server-select');
+        const themeBtn = document.getElementById('aria2-theme-btn');
+        const testBtn = document.getElementById('aria2-test-btn');
+
+        if (closeBtn) closeBtn.addEventListener('click', closeModal);
+        if (mask) mask.addEventListener('click', function (e) {
             if (e.target === this) closeModal();
         });
 
         // 服务器切换
-        document.getElementById('aria2-server-select').addEventListener('change', function (e) {
+        if (serverSelect) serverSelect.addEventListener('change', function (e) {
             StorageManager.setLastServerId(e.target.value);
             refreshToolbar();
             renderActiveTab(); // 重新渲染当前 Tab（部分 Tab 依赖当前服务器）
         });
 
         // 主题切换
-        document.getElementById('aria2-theme-btn').addEventListener('click', function () {
+        if (themeBtn) themeBtn.addEventListener('click', function () {
             const prefs = StorageManager.getPrefs();
             const next = prefs.theme === 'dark' ? 'light' : 'dark';
             const newPrefs = Object.assign({}, prefs, { theme: next });
@@ -1534,7 +1538,7 @@
         });
 
         // 测试连接
-        document.getElementById('aria2-test-btn').addEventListener('click', async function () {
+        if (testBtn) testBtn.addEventListener('click', async function () {
             const server = StorageManager.getCurrentServer();
             if (!server) { showToast('无服务器', 'error'); return; }
             this.disabled = true;
