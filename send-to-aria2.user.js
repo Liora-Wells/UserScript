@@ -186,6 +186,172 @@
     }
 
     // ============================================================
+    // 3. 存储管理
+    // ============================================================
+
+    const StorageManager = {
+        /**
+         * 同步读取（Tampermonkey 默认同步；VM 也可同步访问）
+         * 兼容 VM 异步返回的 Promise（用 .then 兜底，但同步路径优先）
+         */
+        get(key, defaultValue) {
+            let v = GM_getValue(key, undefined);
+            // VM 可能返回 Promise
+            if (v && typeof v.then === 'function') {
+                // 异步路径：返回默认值，实际值由调用方再次读取
+                // 项目约定不写 await，此处同步降级
+                return defaultValue;
+            }
+            if (v === undefined || v === null) return defaultValue;
+            if (typeof v === 'string') {
+                try { return JSON.parse(v); } catch (e) { return defaultValue; }
+            }
+            return v;
+        },
+
+        set(key, value) {
+            GM_setValue(key, JSON.stringify(value));
+        },
+
+        remove(key) {
+            GM_deleteValue(key);
+        },
+
+        // ---------- 服务器 ----------
+        getServers() {
+            const list = this.get(STORAGE_KEYS.servers, null);
+            if (Array.isArray(list) && list.length > 0) return list;
+            return null; // 调用方负责初始化
+        },
+
+        setServers(servers) {
+            this.set(STORAGE_KEYS.servers, servers);
+        },
+
+        getServerById(id) {
+            const list = this.getServers() || [];
+            return list.find(s => s.id === id) || null;
+        },
+
+        getLastServerId() {
+            return this.get(STORAGE_KEYS.lastServerId, null);
+        },
+
+        setLastServerId(id) {
+            this.set(STORAGE_KEYS.lastServerId, id);
+        },
+
+        /**
+         * 获取当前生效的服务器（记忆上次 > 第一个）
+         */
+        getCurrentServer() {
+            const list = this.getServers();
+            if (!list || list.length === 0) return null;
+            const lastId = this.getLastServerId();
+            if (lastId) {
+                const s = list.find(x => x.id === lastId);
+                if (s) return s;
+            }
+            return list[0];
+        },
+
+        // ---------- 偏好 ----------
+        getPrefs() {
+            const p = this.get(STORAGE_KEYS.prefs, null);
+            return Object.assign({}, DEFAULT_PREFS, p || {});
+        },
+
+        setPrefs(prefs) {
+            this.set(STORAGE_KEYS.prefs, prefs);
+        },
+
+        // ---------- 历史 ----------
+        getHistory() {
+            return this.get(STORAGE_KEYS.history, []);
+        },
+
+        setHistory(items) {
+            const prefs = this.getPrefs();
+            const limit = prefs.historyLimit || 100;
+            // 超限截断（保留最新的 N 条）
+            const trimmed = items.length > limit ? items.slice(0, limit) : items;
+            this.set(STORAGE_KEYS.history, trimmed);
+        },
+
+        addHistoryItem(item) {
+            const prefs = this.getPrefs();
+            if (!prefs.historyEnabled) return;
+            const items = this.getHistory();
+            items.unshift(item); // 新的在前
+            this.setHistory(items);
+        },
+
+        updateHistoryItem(id, patch) {
+            const items = this.getHistory();
+            const idx = items.findIndex(x => x.id === id);
+            if (idx === -1) return;
+            items[idx] = Object.assign({}, items[idx], patch);
+            this.setHistory(items);
+        },
+
+        removeHistoryItem(id) {
+            const items = this.getHistory().filter(x => x.id !== id);
+            this.setHistory(items);
+        },
+
+        clearHistory() {
+            this.set(STORAGE_KEYS.history, []);
+        },
+
+        // ---------- 迁移 ----------
+        /**
+         * 首次启动或升级时调用，确保数据结构就绪
+         * @returns {boolean} 是否发生了迁移
+         */
+        migrateIfNeeded() {
+            const existing = this.getServers();
+            if (existing) return false; // 已有新结构
+
+            const legacy = this.get(STORAGE_KEYS.legacyConfig, null);
+            let prefs = Object.assign({}, DEFAULT_PREFS);
+            let servers = [];
+
+            if (legacy) {
+                // 旧版结构：{ rpcUrl, rpcSecret, defaultDir, autoNotification, theme, proxyUrl, enableProxy }
+                const old = legacy;
+                const server = Object.assign({}, DEFAULT_SERVER, {
+                    id: genId('srv'),
+                    name: '本机 Aria2',
+                    rpcUrl: old.rpcUrl || DEFAULT_SERVER.rpcUrl,
+                    rpcSecret: old.rpcSecret || '',
+                    defaultDir: old.defaultDir || '',
+                    proxyUrl: old.proxyUrl || '',
+                    enableProxy: !!old.enableProxy,
+                    headers: { referer: '', userAgent: '', cookie: '' },
+                    createdAt: Date.now()
+                });
+                servers.push(server);
+                prefs = Object.assign(prefs, {
+                    theme: old.theme || 'dark',
+                    autoNotification: old.autoNotification !== false
+                });
+                this.remove(STORAGE_KEYS.legacyConfig);
+            } else {
+                // 全新安装
+                const server = Object.assign({}, DEFAULT_SERVER, {
+                    id: genId('srv'),
+                    createdAt: Date.now()
+                });
+                servers.push(server);
+            }
+
+            this.setServers(servers);
+            this.setPrefs(prefs);
+            return true;
+        }
+    };
+
+    // ============================================================
     // 模块分区（后续任务按此顺序填充）
     // ============================================================
     // 1. 常量定义（DEFAULTS / STORAGE_KEYS / PROTOCOL_WHITELIST）
@@ -202,8 +368,11 @@
     // 9. 初始化（临时最小骨架，后续任务替换）
     // ============================================================
     function init() {
+        StorageManager.migrateIfNeeded();
+        const server = StorageManager.getCurrentServer();
+        console.log('[Aria2] 初始化完成，当前服务器：', server && server.name);
         GM_registerMenuCommand('📥 打开下载面板', function () {
-            alert('骨架：下载面板待实现');
+            alert('骨架：下载面板待实现\n当前服务器：' + (server ? server.name : '无'));
         });
     }
 
