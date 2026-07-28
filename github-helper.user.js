@@ -2452,6 +2452,7 @@
   <div class="ghhelper-settings-tabs">
     <button class="ghhelper-settings-tab active" data-tab="proxies">加速源管理</button>
     <button class="ghhelper-settings-tab" data-tab="features">功能开关</button>
+    <button class="ghhelper-settings-tab" data-tab="backup">备份</button>
     <button class="ghhelper-settings-tab" data-tab="help">帮助</button>
   </div>
   <div class="ghhelper-settings-body" id="ghhelper-body"></div>
@@ -2474,6 +2475,7 @@
             if (!body) return;
             if (tab === 'proxies') this.renderProxyTab(body);
             else if (tab === 'features') this.renderFeatureTab(body);
+            else if (tab === 'backup') this.renderBackupTab(body);
             else if (tab === 'help') this.renderHelpTab(body);
         },
 
