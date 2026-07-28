@@ -15,6 +15,7 @@
 // @grant        GM_unregisterMenuCommand
 // @grant        GM_openInTab
 // @grant        GM_setClipboard
+// @grant        GM_deleteValue
 // @grant        window.onurlchange
 // @sandbox      JavaScript
 // @connect      api.github.com
@@ -227,6 +228,24 @@
                 }
             } catch (e) {
                 ERR('StorageManager.mergeBuiltinUpgrades 异常:', e);
+            }
+        },
+
+        // 原始读写：绕过业务方法，直接操作 GM_*，同步 _cache（供 ConfigBackup 使用）
+        _getRaw(key) {
+            if (typeof GM_getValue === 'undefined') return null;
+            return GM_getValue(key, null);
+        },
+        _setRaw(key, value) {
+            this._cache[key] = value;
+            if (typeof GM_setValue !== 'undefined') {
+                GM_setValue(key, value);
+            }
+        },
+        _deleteRaw(key) {
+            delete this._cache[key];
+            if (typeof GM_deleteValue !== 'undefined') {
+                GM_deleteValue(key);
             }
         }
     };
