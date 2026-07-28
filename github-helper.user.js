@@ -2972,12 +2972,30 @@
             // 类型
             html += '<div class="ghhelper-proxy-form-field" data-ghhelper-nt="1">';
             html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1">类型</label>';
-            html += '<select class="ghhelper-select" data-form-field="type" data-ghhelper-nt="1">';
-            ['download', 'raw', 'clone', 'ssh', 'all'].forEach(t => {
-                const labels = { download: '下载/ZIP', raw: 'Raw', clone: 'Clone', ssh: 'SSH', all: '全部' };
-                html += '<option value="' + t + '"' + (type === t ? ' selected' : '') + '>' + labels[t] + '</option>';
-            });
-            html += '</select>';
+            if (isEdit) {
+                // 编辑模式：单选 select（保持原有行为，含 'all' 选项）
+                html += '<select class="ghhelper-select" data-form-field="type" data-ghhelper-nt="1">';
+                ['download', 'raw', 'clone', 'ssh', 'all'].forEach(t => {
+                    const labels = { download: '下载/ZIP', raw: 'Raw', clone: 'Clone', ssh: 'SSH', all: '全部' };
+                    html += '<option value="' + t + '"' + (type === t ? ' selected' : '') + '>' + labels[t] + '</option>';
+                });
+                html += '</select>';
+            } else {
+                // 添加模式：4 个 checkbox 多选，默认勾选 download
+                html += '<div class="ghhelper-type-checkboxes" data-ghhelper-nt="1">';
+                const types = [
+                    { value: 'download', label: '下载/ZIP', checked: type === 'download' },
+                    { value: 'raw', label: 'Raw', checked: false },
+                    { value: 'clone', label: 'Clone', checked: false },
+                    { value: 'ssh', label: 'SSH', checked: false }
+                ];
+                types.forEach(t => {
+                    html += '<label class="ghhelper-type-checkbox-label" data-ghhelper-nt="1"><input type="checkbox" data-form-field="type" value="' + t.value + '"' + (t.checked ? ' checked' : '') + ' data-ghhelper-nt="1"> ' + t.label + '</label>';
+                });
+                html += '</div>';
+                // 至少选择一个类型的提示（默认隐藏）
+                html += '<div class="ghhelper-proxy-form-error" data-type-error="1" data-ghhelper-nt="1" style="display:none">至少选择一个类型</div>';
+            }
             html += '</div>';
             // URL（整行）
             html += '<div class="ghhelper-proxy-form-field ghhelper-proxy-form-field-full" data-ghhelper-nt="1">';
