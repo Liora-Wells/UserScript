@@ -3066,8 +3066,13 @@
             const mode = saveBtn.dataset.formMode;
             const id = saveBtn.dataset.formId;
             const get = (field) => {
-                const el = formEl.querySelector('[data-form-field="' + field + '"]');
-                if (!el) return '';
+                const els = formEl.querySelectorAll('[data-form-field="' + field + '"]');
+                if (els.length === 0) return '';
+                // 多个元素（如 checkbox 组）：返回数组
+                if (els.length > 1) {
+                    return Array.from(els).filter(el => el.checked).map(el => el.value);
+                }
+                const el = els[0];
                 if (el.type === 'checkbox') return el.checked;
                 return el.value.trim();
             };
@@ -3088,7 +3093,7 @@
 
             const name = get('name');
             const url = get('url');
-            const type = get('type');
+            const typeOrTypes = get('type');  // 编辑模式为 string，添加模式为 string[]
             const region = get('region');
             const desc = get('desc');
             const enabled = get('enabled');
@@ -3101,19 +3106,48 @@
                 return;
             }
 
-            const updates = { name, url, type, region, desc, enabled };
             if (mode === 'edit') {
+                // 编辑模式：type 为 string，原逻辑
+                const updates = { name, url, type: typeOrTypes, region, desc, enabled };
                 const ok = ProxyManager.editProxy(id, updates);
                 if (!ok) {
                     alert('该加速源已被删除');
                 }
+                this._renderChipRow();
+                this._renderGroups();
+                DOMRenderer.reprocessAll();
             } else {
-                ProxyManager.addCustom(updates);
+                // 添加模式：type 为 string[]
+                const types = Array.isArray(typeOrTypes) ? typeOrTypes : [typeOrTypes];
+                if (types.length === 0) {
+                    // 显示类型错误提示
+                    const typeErrEl = formEl.querySelector('[data-type-error="1"]');
+                    if (typeErrEl) typeErrEl.style.display = 'block';
+                    return;
+                }
+                // 隐藏类型错误提示（若有）
+                const typeErrEl = formEl.querySelector('[data-type-error="1"]');
+                if (typeErrEl) typeErrEl.style.display = 'none';
+
+                if (types.length === 1) {
+                    // 单类型：不加后缀（向后兼容）
+                    ProxyManager.addCustom({ name, url, type: types[0], region, desc, enabled });
+                    Toast.success('已添加 1 个加速源');
+                } else {
+                    // 多类型：批量创建，名称加后缀
+                    const suffixMap = { download: '-下载', raw: '-Raw', clone: '-Clone', ssh: '-SSH' };
+                    types.forEach(t => {
+                        ProxyManager.addCustom({
+                            name: name + suffixMap[t],
+                            url, type: t, region, desc, enabled
+                        });
+                    });
+                    Toast.success('已添加 ' + types.length + ' 个加速源');
+                }
+                this._renderChipRow();
+                this._renderGroups();
+                DOMRenderer.reprocessAll();
             }
-            // 保存成功：重渲 Chip + 分组
-            this._renderChipRow();
-            this._renderGroups();
-            DOMRenderer.reprocessAll();
         },
 
         renderBackupTab(body) {
