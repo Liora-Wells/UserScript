@@ -3171,6 +3171,155 @@
             this._bindBackupTabEvents(body);
         },
 
+        _bindBackupTabEvents(body) {
+            const fileInput = body.querySelector('#ghhelper-backup-file');
+            const fileName = body.querySelector('#ghhelper-backup-file-name');
+            const textarea = body.querySelector('#ghhelper-backup-textarea');
+            const previewEl = body.querySelector('#ghhelper-backup-preview');
+            const errorEl = body.querySelector('#ghhelper-backup-error');
+            const importBtn = body.querySelector('#ghhelper-backup-import-btn');
+            const manualBox = body.querySelector('#ghhelper-backup-manual');
+            let _lastValidPayload = null;  // 缓存最近一次验证成功的 payload
+
+            // 通过 data-backup-action 路由点击事件
+            body.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-backup-action]');
+                if (!btn) return;
+                const action = btn.dataset.backupAction;
+
+                if (action === 'export-file') {
+                    this._doExport('file');
+                } else if (action === 'export-clipboard') {
+                    this._doExport('clipboard');
+                } else if (action === 'choose-file') {
+                    fileInput.click();
+                } else if (action === 'validate') {
+                    this._doValidate(textarea.value, previewEl, errorEl, importBtn, _payload => {
+                        _lastValidPayload = _payload;
+                    });
+                } else if (action === 'import') {
+                    if (!_lastValidPayload) {
+                        Toast.error('请先验证配置');
+                        return;
+                    }
+                    this._doImport(_lastValidPayload, body);
+                } else if (action === 'reset') {
+                    this._doReset(body);
+                }
+            });
+
+            // 文件选择：读取文本填入 textarea 并自动验证
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                // 大小检查（>5MB 拒绝）
+                if (file.size > 5 * 1024 * 1024) {
+                    errorEl.style.display = 'block';
+                    errorEl.textContent = '配置文件过大（>5MB），可能损坏';
+                    previewEl.style.display = 'none';
+                    importBtn.disabled = true;
+                    _lastValidPayload = null;
+                    return;
+                }
+                fileName.textContent = file.name;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    textarea.value = ev.target.result;
+                    this._doValidate(textarea.value, previewEl, errorEl, importBtn, _payload => {
+                        _lastValidPayload = _payload;
+                    });
+                };
+                reader.onerror = () => {
+                    errorEl.style.display = 'block';
+                    errorEl.textContent = '文件读取失败：' + (reader.error || '未知错误');
+                    previewEl.style.display = 'none';
+                    importBtn.disabled = true;
+                    _lastValidPayload = null;
+                };
+                reader.readAsText(file);
+            });
+
+            // textarea 防抖验证（500ms）
+            let debounceTimer = null;
+            textarea.addEventListener('input', () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    if (!textarea.value.trim()) {
+                        // 空内容：隐藏预览/错误，禁用导入
+                        previewEl.style.display = 'none';
+                        errorEl.style.display = 'none';
+                        importBtn.disabled = true;
+                        _lastValidPayload = null;
+                        return;
+                    }
+                    this._doValidate(textarea.value, previewEl, errorEl, importBtn, _payload => {
+                        _lastValidPayload = _payload;
+                    });
+                }, 500);
+            });
+
+            // 合并方式切换：手动勾选时显示清单
+            body.querySelectorAll('input[name="ghhelper-merge-mode"]').forEach(radio => {
+                radio.addEventListener('change', () => {
+                    if (radio.value === 'manual' && radio.checked) {
+                        manualBox.style.display = 'block';
+                    } else if (radio.checked) {
+                        manualBox.style.display = 'none';
+                    }
+                });
+            });
+        },
+
+        // 执行导出
+        _doExport(target) {
+            const json = ConfigBackup.export();
+            const proxiesCount = StorageManager.getProxies().length;
+            const featuresCount = Object.keys(StorageManager.getFeatures()).length;
+            if (target === 'file') {
+                const now = new Date();
+                const pad = n => String(n).padStart(2, '0');
+                const ts = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' + pad(now.getHours()) + pad(now.getMinutes());
+                const filename = 'ghhelper-config-' + ts + '.json';
+                const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                a.setAttribute('data-ghhelper-nt', '1');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                Toast.success('已导出配置到文件（' + proxiesCount + ' 个加速源，' + featuresCount + ' 项开关）');
+            } else if (target === 'clipboard') {
+                GM_setClipboard(json);
+                Toast.success('已复制配置到剪贴板（' + proxiesCount + ' 个加速源，' + featuresCount + ' 项开关）');
+            }
+        },
+
+        // 执行验证
+        _doValidate(jsonString, previewEl, errorEl, importBtn, onValid) {
+            const result = ConfigBackup.parse(jsonString);
+            if (!result.ok) {
+                errorEl.style.display = 'block';
+                errorEl.textContent = result.error;
+                previewEl.style.display = 'none';
+                importBtn.disabled = true;
+                onValid(null);
+                return;
+            }
+            // 验证成功
+            let previewText = ConfigBackup.buildPreview(result.payload);
+            if (result.unknownKeys && result.unknownKeys.length > 0) {
+                previewText += ' · ⚠️ 文件包含 ' + result.unknownKeys.length + ' 个未知键（已忽略）';
+            }
+            previewEl.style.display = 'block';
+            previewEl.textContent = previewText;
+            errorEl.style.display = 'none';
+            importBtn.disabled = false;
+            onValid(result.payload);
+        },
+
         renderFeatureTab(body) {
             const items = [
                 { key: 'groupAndSort', icon: '📁', label: '文件分组排序', desc: '按 OS/平台分组，当前系统优先排序', impact: 'Release 文件列表顺序与色块标记' },
