@@ -394,6 +394,34 @@
     };
 
     // ============================================================
+    // 3.5 轻量提示系统 (Toast)
+    // ============================================================
+    const Toast = {
+        _el: null,
+        _timer: null,
+        show(msg, type = 'info', duration = 2500) {
+            if (!this._el) {
+                this._el = document.createElement('div');
+                this._el.setAttribute('data-ghhelper-element', '1');
+                this._el.setAttribute('data-ghhelper-nt', '1');
+                document.body.appendChild(this._el);
+            }
+            this._el.className = 'ghhelper-toast ghhelper-toast-' + type;
+            this._el.textContent = msg;
+            // 强制重排以重启动画
+            void this._el.offsetWidth;
+            this._el.classList.add('ghhelper-toast-show');
+            clearTimeout(this._timer);
+            this._timer = setTimeout(() => {
+                this._el.classList.remove('ghhelper-toast-show');
+            }, duration);
+        },
+        success(msg, duration) { this.show(msg, 'success', duration); },
+        error(msg, duration) { this.show(msg, 'error', duration || 3500); },
+        info(msg, duration) { this.show(msg, 'info', duration); }
+    };
+
+    // ============================================================
     // 4. 分组排序引擎 (SortEngine)
     // ============================================================
 
