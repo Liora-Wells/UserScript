@@ -954,6 +954,150 @@
     cursor: pointer;
 }
 
+/* Toast 提示 */
+.ghhelper-toast {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 100001;
+    padding: 10px 16px;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 13px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    max-width: 360px;
+}
+.ghhelper-toast-show { opacity: 1; transform: translateY(0); }
+.ghhelper-toast-info { background: var(--color-accent-emphasis, #0969da); }
+.ghhelper-toast-success { background: var(--color-success-emphasis, #1a7f37); }
+.ghhelper-toast-error { background: var(--color-danger-emphasis, #cf222e); }
+
+/* 备份 Tab 卡片 */
+.ghhelper-backup-card {
+    border: 1px solid var(--color-border-default, #30363d);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+    background: var(--color-canvas-default, #0d1117);
+}
+.ghhelper-backup-card h4 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+}
+.ghhelper-backup-desc {
+    margin: 0 0 12px 0;
+    font-size: 12px;
+    color: var(--color-fg-muted, #8b949e);
+    line-height: 1.5;
+}
+.ghhelper-backup-summary {
+    font-size: 12px;
+    color: var(--color-fg-default, #c9d1d9);
+    padding: 8px 12px;
+    background: var(--color-canvas-subtle, #161b22);
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+.ghhelper-backup-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.ghhelper-backup-import-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.ghhelper-backup-file-name {
+    font-size: 12px;
+    color: var(--color-fg-muted, #8b949e);
+}
+.ghhelper-backup-textarea {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--color-border-default, #30363d);
+    border-radius: 6px;
+    background: var(--color-canvas-default, #0d1117);
+    color: var(--color-fg-default, #c9d1d9);
+    font-family: monospace;
+    font-size: 12px;
+    resize: vertical;
+    margin-top: 4px;
+    box-sizing: border-box;
+}
+.ghhelper-backup-preview {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--color-success-subtle, rgba(46, 160, 67, 0.15));
+    border: 1px solid var(--color-success-emphasis, #1a7f37);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--color-fg-default, #c9d1d9);
+    line-height: 1.5;
+}
+.ghhelper-backup-error {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--color-danger-subtle, rgba(248, 81, 73, 0.15));
+    border: 1px solid var(--color-danger-emphasis, #f85149);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--color-danger-fg, #f85149);
+    line-height: 1.5;
+}
+.ghhelper-backup-merge {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 13px;
+}
+.ghhelper-backup-merge label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+}
+.ghhelper-backup-manual {
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: var(--color-canvas-subtle, #161b22);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+}
+.ghhelper-backup-manual label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+/* 添加表单类型 checkbox 组 */
+.ghhelper-type-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ghhelper-type-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border: 1px solid var(--color-border-default, #30363d);
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
 /* "设为默认 ☁" 单选按钮容器 */
 .ghhelper-default-radio {
     display: inline-flex;
