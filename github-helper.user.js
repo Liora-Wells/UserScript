@@ -422,6 +422,121 @@
     };
 
     // ============================================================
+    // 3.6 配置备份与恢复 (ConfigBackup)
+    // ============================================================
+    const ConfigBackup = {
+        CONFIG_VERSION: 1,
+        SCRIPT_NAME: 'github-helper',
+
+        // 导出：返回 JSON 字符串
+        export() {
+            const data = {};
+            Object.values(STORAGE_KEYS).forEach(key => {
+                data[key] = StorageManager._getRaw(key);
+            });
+            return JSON.stringify({
+                _meta: {
+                    script: this.SCRIPT_NAME,
+                    scriptVersion: GM_info.script.version,
+                    configVersion: this.CONFIG_VERSION,
+                    exportedAt: new Date().toISOString(),
+                    storageKeys: Object.values(STORAGE_KEYS)
+                },
+                data: data
+            }, null, 2);
+        },
+
+        // 解析并校验
+        // 返回 { ok: true, payload, validKeys, unknownKeys } 或 { ok: false, error }
+        parse(jsonString) {
+            let parsed;
+            try {
+                parsed = JSON.parse(jsonString);
+            } catch (e) {
+                return { ok: false, error: 'JSON 格式错误：' + e.message };
+            }
+            if (!parsed || typeof parsed !== 'object') {
+                return { ok: false, error: '根节点不是对象' };
+            }
+            if (!parsed._meta || parsed._meta.script !== this.SCRIPT_NAME) {
+                return { ok: false, error: '不是有效的 GitHub 助手配置文件（缺少 _meta.script）' };
+            }
+            if (!parsed.data || typeof parsed.data !== 'object') {
+                return { ok: false, error: '配置文件缺少 data 字段' };
+            }
+            const knownKeys = new Set(Object.values(STORAGE_KEYS));
+            const fileKeys = Object.keys(parsed.data);
+            const validKeys = fileKeys.filter(k => knownKeys.has(k));
+            if (validKeys.length === 0) {
+                return { ok: false, error: '配置文件不包含任何已知配置键' };
+            }
+            const unknownKeys = fileKeys.filter(k => !knownKeys.has(k));
+            return { ok: true, payload: parsed, validKeys, unknownKeys };
+        },
+
+        // 预览：返回可读字符串
+        buildPreview(payload) {
+            const meta = payload._meta;
+            const data = payload.data;
+            const parts = [];
+            if (data[STORAGE_KEYS.proxies] && Array.isArray(data[STORAGE_KEYS.proxies])) {
+                parts.push('加速源 ' + data[STORAGE_KEYS.proxies].length + ' 条');
+            }
+            if (data[STORAGE_KEYS.features] && typeof data[STORAGE_KEYS.features] === 'object') {
+                parts.push('功能开关 ' + Object.keys(data[STORAGE_KEYS.features]).length + ' 项');
+            }
+            const uiKeys = [STORAGE_KEYS.maxDisplay, STORAGE_KEYS.groupsCollapsed, STORAGE_KEYS.selectedOS, STORAGE_KEYS.selectedArch];
+            const uiCount = uiKeys.filter(k => data[k] !== undefined && data[k] !== null).length;
+            if (uiCount > 0) parts.push('UI 偏好 ' + uiCount + ' 项');
+            const dateStr = meta.exportedAt ? new Date(meta.exportedAt).toLocaleString('zh-CN') : '未知时间';
+            return '配置来源：v' + meta.scriptVersion + ' · 导出于 ' + dateStr + ' · 将导入：' + (parts.join(' · ') || '无');
+        },
+
+        // 根据合并方式解析要写入的键
+        // mode: 'all' | 'proxies' | 'features' | 'manual'
+        // manualKeys: string[]（storage 键名），仅 mode='manual' 时使用
+        _resolveKeys(mode, manualKeys) {
+            switch (mode) {
+                case 'all':
+                    return Object.values(STORAGE_KEYS);
+                case 'proxies':
+                    return [STORAGE_KEYS.proxies, STORAGE_KEYS.deletedBuiltinIds, STORAGE_KEYS.defaultRawProxyId];
+                case 'features':
+                    return [STORAGE_KEYS.features];
+                case 'manual':
+                    return manualKeys || [];
+            }
+            return [];
+        },
+
+        // 执行导入：返回实际写入的键数
+        apply(payload, mode, manualKeys) {
+            const keysToWrite = this._resolveKeys(mode, manualKeys);
+            let written = 0;
+            keysToWrite.forEach(key => {
+                if (payload.data[key] !== undefined) {
+                    StorageManager._setRaw(key, payload.data[key]);
+                    written++;
+                }
+            });
+            return written;
+        },
+
+        // 重置全部为默认（首次安装状态）
+        resetAll() {
+            Object.values(STORAGE_KEYS).forEach(key => {
+                StorageManager._deleteRaw(key);
+            });
+            // 清空缓存后重新初始化
+            StorageManager._cache = {};
+            StorageManager.initProxies();
+            StorageManager.setFeatures(Object.assign({}, DEFAULT_FEATURES));
+            StorageManager.setMaxDisplay(6);
+            // selectedOS/Arch/groupsCollapsed/defaultRawProxyId 保持 null/默认（get 时回退到默认值）
+        }
+    };
+
+    // ============================================================
     // 4. 分组排序引擎 (SortEngine)
     // ============================================================
 
