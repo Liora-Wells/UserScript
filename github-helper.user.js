@@ -3098,6 +3098,79 @@
             DOMRenderer.reprocessAll();
         },
 
+        renderBackupTab(body) {
+            // 当前配置概要计数
+            const proxies = StorageManager.getProxies();
+            const features = StorageManager.getFeatures();
+            const featureCount = Object.keys(features).length;
+            const uiKeys = [STORAGE_KEYS.maxDisplay, STORAGE_KEYS.groupsCollapsed, STORAGE_KEYS.selectedOS, STORAGE_KEYS.selectedArch];
+            const uiCount = uiKeys.filter(k => StorageManager._getRaw(k) !== undefined && StorageManager._getRaw(k) !== null).length;
+            const otherCount = 2;  // deletedBuiltinIds + defaultRawProxyId
+
+            let html = '<div class="ghhelper-settings-section" data-ghhelper-nt="1">';
+
+            // 导出配置卡片
+            html += '<div class="ghhelper-backup-card" data-ghhelper-nt="1">';
+            html += '<h4 data-ghhelper-nt="1">导出配置</h4>';
+            html += '<p class="ghhelper-backup-desc" data-ghhelper-nt="1">将当前全部配置导出为 JSON 文件，可用于备份或迁移到其他浏览器/设备。</p>';
+            html += '<div class="ghhelper-backup-summary" data-ghhelper-nt="1">当前配置概要：加速源(' + proxies.length + ') · 功能开关(' + featureCount + ') · UI 偏好(' + uiCount + ') · 其他(' + otherCount + ')</div>';
+            html += '<div class="ghhelper-backup-actions" data-ghhelper-nt="1">';
+            html += '<button class="ghhelper-btn ghhelper-btn-primary" data-backup-action="export-file" data-ghhelper-nt="1">📥 下载配置文件</button>';
+            html += '<button class="ghhelper-btn" data-backup-action="export-clipboard" data-ghhelper-nt="1">📋 复制到剪贴板</button>';
+            html += '</div>';
+            html += '</div>';
+
+            // 导入配置卡片
+            html += '<div class="ghhelper-backup-card" data-ghhelper-nt="1">';
+            html += '<h4 data-ghhelper-nt="1">导入配置</h4>';
+            html += '<p class="ghhelper-backup-desc" data-ghhelper-nt="1">从备份文件或粘贴的 JSON 恢复配置。</p>';
+            html += '<div class="ghhelper-backup-import-row" data-ghhelper-nt="1">';
+            html += '<input type="file" id="ghhelper-backup-file" accept=".json,application/json" data-ghhelper-nt="1" style="display:none">';
+            html += '<button class="ghhelper-btn" data-backup-action="choose-file" data-ghhelper-nt="1">📁 选择文件…</button>';
+            html += '<span class="ghhelper-backup-file-name" id="ghhelper-backup-file-name" data-ghhelper-nt="1">未选择文件</span>';
+            html += '</div>';
+            html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1" style="margin-top:8px">或粘贴 JSON：</label>';
+            html += '<textarea class="ghhelper-backup-textarea" id="ghhelper-backup-textarea" rows="6" placeholder=\'{"_meta":{...},"data":{...}}\' data-ghhelper-nt="1"></textarea>';
+            // 预览区（验证成功显示）
+            html += '<div class="ghhelper-backup-preview" id="ghhelper-backup-preview" data-ghhelper-nt="1" style="display:none"></div>';
+            // 错误区（验证失败显示）
+            html += '<div class="ghhelper-backup-error" id="ghhelper-backup-error" data-ghhelper-nt="1" style="display:none"></div>';
+            // 合并方式
+            html += '<div class="ghhelper-backup-merge" data-ghhelper-nt="1">';
+            html += '<label class="ghhelper-proxy-form-label" data-ghhelper-nt="1">合并方式：</label>';
+            html += '<label data-ghhelper-nt="1"><input type="radio" name="ghhelper-merge-mode" value="all" checked data-ghhelper-nt="1"> 全部覆盖</label>';
+            html += '<label data-ghhelper-nt="1"><input type="radio" name="ghhelper-merge-mode" value="proxies" data-ghhelper-nt="1"> 仅加速源</label>';
+            html += '<label data-ghhelper-nt="1"><input type="radio" name="ghhelper-merge-mode" value="features" data-ghhelper-nt="1"> 仅功能开关</label>';
+            html += '<label data-ghhelper-nt="1"><input type="radio" name="ghhelper-merge-mode" value="manual" data-ghhelper-nt="1"> 手动勾选</label>';
+            html += '</div>';
+            // 手动勾选清单（默认隐藏）
+            html += '<div class="ghhelper-backup-manual" id="ghhelper-backup-manual" data-ghhelper-nt="1" style="display:none">';
+            html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="proxies-group" checked data-ghhelper-nt="1"> 加速源（含默认 Raw 源、已删内置列表）</label>';
+            html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="features" checked data-ghhelper-nt="1"> 功能开关</label>';
+            html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="maxDisplay" data-ghhelper-nt="1"> 最大显示数量</label>';
+            html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="groupsCollapsed" data-ghhelper-nt="1"> 分组折叠状态</label>';
+            html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="selectedOS" data-ghhelper-nt="1"> 手动选择的 OS</label>';
+            html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="selectedArch" data-ghhelper-nt="1"> 手动选择的架构</label>';
+            html += '</div>';
+            // 操作按钮
+            html += '<div class="ghhelper-backup-actions" data-ghhelper-nt="1" style="margin-top:8px">';
+            html += '<button class="ghhelper-btn" data-backup-action="validate" data-ghhelper-nt="1">✓ 验证</button>';
+            html += '<button class="ghhelper-btn ghhelper-btn-primary" data-backup-action="import" id="ghhelper-backup-import-btn" disabled data-ghhelper-nt="1">📥 导入</button>';
+            html += '</div>';
+            html += '</div>';
+
+            // 重置卡片
+            html += '<div class="ghhelper-backup-card" data-ghhelper-nt="1">';
+            html += '<h4 data-ghhelper-nt="1">重置</h4>';
+            html += '<p class="ghhelper-backup-desc" data-ghhelper-nt="1">恢复所有配置到首次安装状态（含加速源、功能开关、UI 偏好）。此操作不可撤销。</p>';
+            html += '<button class="ghhelper-btn" data-backup-action="reset" data-ghhelper-nt="1" style="border-color:var(--color-danger-emphasis,#f85149);color:var(--color-danger-fg,#f85149)">↺ 恢复全部默认配置</button>';
+            html += '</div>';
+
+            html += '</div>';
+            body.innerHTML = html;
+            this._bindBackupTabEvents(body);
+        },
+
         renderFeatureTab(body) {
             const items = [
                 { key: 'groupAndSort', icon: '📁', label: '文件分组排序', desc: '按 OS/平台分组，当前系统优先排序', impact: 'Release 文件列表顺序与色块标记' },
