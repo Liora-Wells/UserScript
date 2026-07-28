@@ -3320,6 +3320,63 @@
             onValid(result.payload);
         },
 
+        // 执行导入
+        _doImport(payload, body) {
+            // 读取合并方式
+            const checkedRadio = body.querySelector('input[name="ghhelper-merge-mode"]:checked');
+            if (!checkedRadio) {
+                Toast.error('请选择合并方式');
+                return;
+            }
+            const mode = checkedRadio.value;
+
+            // 解析要写入的键
+            let manualKeys = null;
+            if (mode === 'manual') {
+                manualKeys = [];
+                // 加速源组：proxies + deletedBuiltinIds + defaultRawProxyId
+                const proxiesGroupCb = body.querySelector('input[data-manual-key="proxies-group"]');
+                if (proxiesGroupCb && proxiesGroupCb.checked) {
+                    manualKeys.push(STORAGE_KEYS.proxies, STORAGE_KEYS.deletedBuiltinIds, STORAGE_KEYS.defaultRawProxyId);
+                }
+                // 其他单项
+                ['features', 'maxDisplay', 'groupsCollapsed', 'selectedOS', 'selectedArch'].forEach(keyName => {
+                    const cb = body.querySelector('input[data-manual-key="' + keyName + '"]');
+                    if (cb && cb.checked) {
+                        manualKeys.push(STORAGE_KEYS[keyName]);
+                    }
+                });
+                if (manualKeys.length === 0) {
+                    Toast.error('请至少勾选一个类别');
+                    return;
+                }
+            }
+
+            // 合并方式名称（用于确认提示）
+            const modeNames = { all: '全部覆盖', proxies: '仅加速源', features: '仅功能开关', manual: '手动勾选（' + (manualKeys ? manualKeys.length : 0) + ' 项）' };
+            if (!confirm('将覆盖当前配置（合并方式：' + modeNames[mode] + '），确认？')) return;
+
+            // 执行写入
+            const written = ConfigBackup.apply(payload, mode, manualKeys);
+
+            // 刷新页面加速按钮
+            DOMRenderer.reprocessAll();
+
+            // 重渲 backup Tab（保持 Tab 选中状态）
+            this.renderTab('backup');
+
+            Toast.success('已导入配置（覆盖 ' + written + ' 项）');
+        },
+
+        // 执行重置
+        _doReset(body) {
+            if (!confirm('将清除所有自定义配置并恢复到首次安装状态，此操作不可撤销，确认？')) return;
+            ConfigBackup.resetAll();
+            DOMRenderer.reprocessAll();
+            this.renderTab('backup');
+            Toast.success('已恢复全部默认配置');
+        },
+
         renderFeatureTab(body) {
             const items = [
                 { key: 'groupAndSort', icon: '📁', label: '文件分组排序', desc: '按 OS/平台分组，当前系统优先排序', impact: 'Release 文件列表顺序与色块标记' },
