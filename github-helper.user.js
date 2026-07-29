@@ -3960,7 +3960,7 @@
 
                     // ===== 仓库主页：检测 Code 下拉菜单 portal 内容变化 =====
                     if (isRepoHome) {
-                        // Code 下拉菜单打开时的 portal 子元素
+                        // Code 下拉菜单打开时的 portal 子元素（首次注入由这里触发，后续 tab 切换由 _ensureTabDelegate 的事件委托处理）
                         if (target.tagName === 'DIV' && target.parentElement && target.parentElement.id === '__primerPortalRoot__') {
                             LOG('全局 observer: portal 子元素新增');
                             const portal = document.getElementById('__primerPortalRoot__');
@@ -3970,25 +3970,6 @@
                                 DOMRenderer.processDownloadZIP(portal);
                             }
                             return;
-                        }
-
-                        // HTTPS/SSH tab 切换：通过容器内 input value 特征判断（不依赖具体类名）
-                        if (target.tagName === 'DIV') {
-                            const tabType = DOMRenderer._checkTabSwitch(target);
-                            if (tabType) {
-                                LOG('全局 observer: tab 切换 -> ' + tabType);
-                                const portal = DOMRenderer._findPortal();
-                                if (tabType === 'https') {
-                                    DOMRenderer._clearSshRows();
-                                    DOMRenderer.processCloneButtons(portal);
-                                    DOMRenderer.processDownloadZIP(portal);
-                                } else if (tabType === 'ssh') {
-                                    DOMRenderer._clearCloneRows();
-                                    DOMRenderer._clearDownloadZIPRows();
-                                    DOMRenderer.processSSHButtons(portal);
-                                }
-                                return;
-                            }
                         }
                     }
 
