@@ -1770,7 +1770,7 @@
                         lk.target = '_blank';
                         lk.rel = 'noreferrer noopener nofollow';
                         lk.setAttribute('data-ghhelper-nt', '1');
-                        lk.textContent = p.name;
+                        lk.textContent = 'Download ZIP ' + p.name;
                         lk.title = (p.desc || '') + (p.region ? ' [' + p.region + ']' : '');
                         dm.appendChild(lk);
                     });
