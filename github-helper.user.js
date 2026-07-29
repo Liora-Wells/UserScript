@@ -4053,7 +4053,7 @@
         init();
     });
 
-    LOG('=== GitHub 助手脚本加载完成, 版本 1.1.0 ===');
+    LOG('=== GitHub 助手脚本加载完成, 版本 ' + (typeof GM_info !== 'undefined' ? GM_info.script.version : 'unknown') + ' ===');
     LOG('  当前页面:', window.location.href);
     LOG('  功能状态:', JSON.stringify(StorageManager.getFeatures()));
     LOG('  GM 函数可用: getValue=' + (typeof GM_getValue !== 'undefined') + ', setValue=' + (typeof GM_setValue !== 'undefined') + ', registerMenu=' + (typeof GM_registerMenuCommand !== 'undefined'));
