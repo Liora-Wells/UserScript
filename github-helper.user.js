@@ -1701,9 +1701,6 @@
             const html = hrefEl.closest('li') || hrefEl.parentElement;
             if (!html) return;
 
-            // 绑定 tab 切换事件委托（防重复）
-            this._ensureTabDelegate(target);
-
             // 幂等检查：若已注入则跳过
             if (html.nextElementSibling && html.nextElementSibling.dataset.ghhelperZipRow === '1') return;
 
@@ -1822,6 +1819,17 @@
             return document;
         },
 
+        // 检测 tab 切换：根据容器内 input value 特征判断是 HTTPS 还是 SSH tab
+        _checkTabSwitch(container) {
+            const inputs = container.getElementsByTagName('input');
+            for (let i = 0; i < inputs.length; i++) {
+                const v = inputs[i].value;
+                if (v.startsWith('https://')) return 'https';
+                if (v.startsWith('git@')) return 'ssh';
+            }
+            return null;
+        },
+
         // Raw 加速：在文件查看页 Raw 按钮后追加一串加速按钮
         // 样式参考 docs/Github 增强 - 高速下载.js：紧贴原按钮、复用其 className
         processRawButtons() {
@@ -1876,8 +1884,6 @@
                 }
             }
             if (!html) return;
-            // 绑定 tab 切换事件委托（防重复）
-            this._ensureTabDelegate(target);
             // 检查 input 是否可见（切换到 SSH tab 时 HTTPS input 可能被隐藏）
             if (html.offsetParent === null && html.getClientRects().length === 0) return;
             // 已处理且加速源行仍存在则跳过（避免重复处理）
@@ -2042,8 +2048,6 @@
                 }
             }
             if (!html) return;
-            // 绑定 tab 切换事件委托（防重复）
-            this._ensureTabDelegate(target);
             // 检查 input 是否可见（切换到 HTTPS tab 时 SSH input 可能被隐藏）
             if (html.offsetParent === null && html.getClientRects().length === 0) return;
             // 已处理且加速源行仍存在则跳过
@@ -2231,30 +2235,6 @@
             scope.querySelectorAll('.ghhelper-clone-row, .ghhelper-ssh-row').forEach(e => e.remove());
             scope.querySelectorAll('[data-ghhelper-clone-processed]').forEach(el => el.removeAttribute('data-ghhelper-clone-processed'));
             scope.querySelectorAll('[data-ghhelper-ssh-processed]').forEach(el => el.removeAttribute('data-ghhelper-ssh-processed'));
-        },
-
-        // 确保 portal 上绑定了 tab 切换事件委托（防重复绑定）
-        // 用 click 事件委托替代 MutationObserver 检测 tab 切换，解决 VM 下 mutation fire 时机差异导致的漏检
-        _ensureTabDelegate(portal) {
-            if (!portal || portal.dataset.ghhelperTabDelegateBound === '1') return;
-            portal.dataset.ghhelperTabDelegateBound = '1';
-            portal.setAttribute('data-ghhelper-nt', '1');
-            portal.addEventListener('click', (e) => {
-                // 用 role=tab 特征检测 tab 按钮（ARIA 标准属性，比类名稳定）
-                const tab = e.target.closest('[role="tab"]');
-                if (!tab) return;
-                LOG('tab 切换 click 检测:', tab.getAttribute('aria-selected') || tab.textContent.trim());
-                // tab click 后 GitHub 异步切换 DOM，延迟 50ms 后全量清理+重建
-                setTimeout(() => {
-                    this._clearAllCloneSshRows();
-                    this._clearDownloadZIPRows();
-                    const newPortal = this._findPortal();
-                    this.processCloneButtons(newPortal);
-                    this.processSSHButtons(newPortal);
-                    this.processDownloadZIP(newPortal);
-                }, 50);
-            });
-            LOG('_ensureTabDelegate: 已绑定 tab 切换事件委托');
         },
 
         // 修复 Code 下拉菜单 overflow/max-height，避免加速源被截断
@@ -3960,7 +3940,7 @@
 
                     // ===== 仓库主页：检测 Code 下拉菜单 portal 内容变化 =====
                     if (isRepoHome) {
-                        // Code 下拉菜单打开时的 portal 子元素（首次注入由这里触发，后续 tab 切换由 _ensureTabDelegate 的事件委托处理）
+                        // Code 下拉菜单打开时的 portal 子元素
                         if (target.tagName === 'DIV' && target.parentElement && target.parentElement.id === '__primerPortalRoot__') {
                             LOG('全局 observer: portal 子元素新增');
                             const portal = document.getElementById('__primerPortalRoot__');
@@ -3970,6 +3950,25 @@
                                 DOMRenderer.processDownloadZIP(portal);
                             }
                             return;
+                        }
+
+                        // HTTPS/SSH tab 切换：通过容器内 input value 特征判断（不依赖具体类名）
+                        if (target.tagName === 'DIV') {
+                            const tabType = DOMRenderer._checkTabSwitch(target);
+                            if (tabType) {
+                                LOG('全局 observer: tab 切换 -> ' + tabType);
+                                const portal = DOMRenderer._findPortal();
+                                if (tabType === 'https') {
+                                    DOMRenderer._clearSshRows();
+                                    DOMRenderer.processCloneButtons(portal);
+                                    DOMRenderer.processDownloadZIP(portal);
+                                } else if (tabType === 'ssh') {
+                                    DOMRenderer._clearCloneRows();
+                                    DOMRenderer._clearDownloadZIPRows();
+                                    DOMRenderer.processSSHButtons(portal);
+                                }
+                                return;
+                            }
                         }
                     }
 
