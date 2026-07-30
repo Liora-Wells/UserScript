@@ -1830,6 +1830,36 @@
             return null;
         },
 
+        // 在 portal 上绑定 click 事件委托，作为 MutationObserver 的补充兜底
+        // 用途：Firefox + Violentmonkey 下 mutation fire 时机差异可能导致 _checkTabSwitch 漏检，
+        //       click 委托不依赖 mutation 时机，确保 tab 切换后加速源正确同步
+        // 设计：任何 click 都延迟 50ms 后用 _checkTabSwitch 检查整个 portal 的 input value，
+        //       不依赖 role=tab（GitHub Code 菜单 tab 按钮无此属性），不依赖点击目标
+        _ensureTabDelegate(portal) {
+            if (!portal || portal.dataset.ghhelperTabDelegateBound === '1') return;
+            portal.dataset.ghhelperTabDelegateBound = '1';
+            portal.setAttribute('data-ghhelper-nt', '1');
+            portal.addEventListener('click', (e) => {
+                // 任何 click 都延迟检查 tab 状态（不判断点击目标，复用 _checkTabSwitch 逻辑）
+                setTimeout(() => {
+                    const tabType = this._checkTabSwitch(portal);
+                    if (!tabType) return;
+                    LOG('click 委托: tab 切换 -> ' + tabType);
+                    const p = this._findPortal();
+                    if (tabType === 'https') {
+                        this._clearSshRows();
+                        this.processCloneButtons(p);
+                        this.processDownloadZIP(p);
+                    } else if (tabType === 'ssh') {
+                        this._clearCloneRows();
+                        this._clearDownloadZIPRows();
+                        this.processSSHButtons(p);
+                    }
+                }, 50);
+            });
+            LOG('_ensureTabDelegate: 已绑定 click 事件委托');
+        },
+
         // Raw 加速：在文件查看页 Raw 按钮后追加一串加速按钮
         // 样式参考 docs/Github 增强 - 高速下载.js：紧贴原按钮、复用其 className
         processRawButtons() {
@@ -3945,6 +3975,7 @@
                             LOG('全局 observer: portal 子元素新增');
                             const portal = document.getElementById('__primerPortalRoot__');
                             if (portal) {
+                                DOMRenderer._ensureTabDelegate(portal);
                                 DOMRenderer.processCloneButtons(portal);
                                 DOMRenderer.processSSHButtons(portal);
                                 DOMRenderer.processDownloadZIP(portal);
