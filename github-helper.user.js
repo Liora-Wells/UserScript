@@ -3655,11 +3655,15 @@
         },
 
         renderHelpTab(body) {
+            const ver = (typeof GM_info !== 'undefined' && GM_info.script) ? GM_info.script.version : 'unknown';
             body.innerHTML = `
 <div class="ghhelper-settings-section">
   <h4>关于 GitHub 助手</h4>
   <p style="font-size:13px;color:var(--fgColor-muted,var(--color-fg-muted))">
     GitHub 助手整合了 Release 增强显示、加速下载等功能，兼容 GitHub 中文化插件。
+  </p>
+  <p style="font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted));margin-top:4px">
+    版本：<strong>v${ver}</strong>
   </p>
 </div>
 <div class="ghhelper-settings-section">
