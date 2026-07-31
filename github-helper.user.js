@@ -1819,11 +1819,16 @@
             return document;
         },
 
-        // 检测 tab 切换：根据容器内 input value 特征判断是 HTTPS 还是 SSH tab
+        // 检测 tab 切换：根据容器内可见 input 的 value 特征判断是 HTTPS 还是 SSH tab
+        // 注意：GitHub tab 切换时隐藏而非移除旧 tab 的 input，必须过滤不可见 input
+        // 否则 portal 中同时有 HTTPS 和 SSH 两个 input，会始终返回 DOM 顺序靠前的 'https'
         _checkTabSwitch(container) {
             const inputs = container.getElementsByTagName('input');
             for (let i = 0; i < inputs.length; i++) {
-                const v = inputs[i].value;
+                const inp = inputs[i];
+                // 跳过隐藏的 input（offsetParent 为 null 且 getClientRects 为空）
+                if (inp.offsetParent === null && inp.getClientRects().length === 0) continue;
+                const v = inp.value;
                 if (v.startsWith('https://')) return 'https';
                 if (v.startsWith('git@')) return 'ssh';
             }
@@ -1839,9 +1844,13 @@
             if (!portal || portal.dataset.ghhelperTabDelegateBound === '1') return;
             portal.dataset.ghhelperTabDelegateBound = '1';
             portal.setAttribute('data-ghhelper-nt', '1');
+            let tabDelegateTimer = null;
             portal.addEventListener('click', (e) => {
-                // 任何 click 都延迟检查 tab 状态（不判断点击目标，复用 _checkTabSwitch 逻辑）
-                setTimeout(() => {
+                // 防抖：快速点击时只保留最后一个 timer，避免多个 setTimeout 堆积
+                if (tabDelegateTimer) clearTimeout(tabDelegateTimer);
+                tabDelegateTimer = setTimeout(() => {
+                    tabDelegateTimer = null;
+                    // 任何 click 都延迟检查 tab 状态（不判断点击目标，复用 _checkTabSwitch 逻辑）
                     const tabType = this._checkTabSwitch(portal);
                     if (!tabType) return;
                     LOG('click 委托: tab 切换 -> ' + tabType);
@@ -3663,7 +3672,7 @@
     GitHub 助手整合了 Release 增强显示、加速下载等功能，兼容 GitHub 中文化插件。
   </p>
   <p style="font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted));margin-top:4px">
-    版本：<strong>v${ver}</strong>
+    版本：<strong id="ghhelper-ver"></strong>
   </p>
 </div>
 <div class="ghhelper-settings-section">
@@ -3689,6 +3698,9 @@
     如有问题或建议，请访问 <a href="https://github.com/Liora-Wells/UserScript" target="_blank">GitHub 仓库</a>
   </p>
 </div>`;
+            // 用 textContent 填充版本号，避免 innerHTML 模板注入风险
+            const verEl = document.getElementById('ghhelper-ver');
+            if (verEl) verEl.textContent = 'v' + ver;
         }
     };
 
@@ -3964,8 +3976,10 @@
                         // "Show more releases" 插入的 SECTION/ARTICLE 容器
                         // GitHub 可能一次性插入完整 section（含子元素），subtree 只报告 section 本身
                         // 内部 details 不会作为 addedNodes 报告，需检测 section 容器
+                        // 必须同时包含 tag 链接和 details，避免误匹配更新日志等折叠区
                         if ((target.tagName === 'SECTION' || target.tagName === 'ARTICLE') &&
-                            target.querySelector('a[href*="/releases/tag/"], details')) {
+                            target.querySelector('a[href*="/releases/tag/"]') &&
+                            target.querySelector('details')) {
                             LOG('全局 observer: 发行版容器新增（Show more releases）');
                             processAllDetailsDebounced();
                             return;
@@ -4099,7 +4113,7 @@
         init();
     });
 
-    LOG('=== GitHub 助手脚本加载完成, 版本 ' + (typeof GM_info !== 'undefined' ? GM_info.script.version : 'unknown') + ' ===');
+    LOG('=== GitHub 助手脚本加载完成, 版本 ' + (typeof GM_info !== 'undefined' && GM_info.script ? GM_info.script.version : 'unknown') + ' ===');
     LOG('  当前页面:', window.location.href);
     LOG('  功能状态:', JSON.stringify(StorageManager.getFeatures()));
     LOG('  GM 函数可用: getValue=' + (typeof GM_getValue !== 'undefined') + ', setValue=' + (typeof GM_setValue !== 'undefined') + ', registerMenu=' + (typeof GM_registerMenuCommand !== 'undefined'));
