@@ -3961,11 +3961,23 @@
                             processAllDetailsDebounced();
                             return;
                         }
+                        // "Show more releases" 插入的 SECTION/ARTICLE 容器
+                        // GitHub 可能一次性插入完整 section（含子元素），subtree 只报告 section 本身
+                        // 内部 details 不会作为 addedNodes 报告，需检测 section 容器
+                        if ((target.tagName === 'SECTION' || target.tagName === 'ARTICLE') &&
+                            target.querySelector('a[href*="/releases/tag/"], details')) {
+                            LOG('全局 observer: 发行版容器新增（Show more releases）');
+                            processAllDetailsDebounced();
+                            return;
+                        }
                         // 新增的下载链接（资产展开后异步加载）
                         if (target.tagName === 'A') {
                             const href = target.getAttribute('href') || '';
                             if (href.indexOf('/releases/download/') > -1 || href.indexOf('/archive/') > -1) {
                                 LOG('全局 observer: 下载链接新增');
+                                // include-fragment 加载完成后 details 数量未变，但 details 内部内容已变化
+                                // 清除缓存强制 processAllDetails 重新处理，使已处理 details 重渲加速按钮
+                                _lastDetailsCount = 0;
                                 processAllDetailsDebounced();
                                 return;
                             }
