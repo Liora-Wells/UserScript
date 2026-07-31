@@ -1173,9 +1173,11 @@
             // 防止在 wrapper 内部再次创建嵌套 wrapper
             if (details.hasAttribute('data-ghhelper-wrapper')) return;
             if (details.dataset.ghhelperProcessed === 'true') {
-                // 已处理过：若 details 已展开，只重渲加速按钮，不重建分组排序
-                // 分组排序的 wrapper 重建会破坏用户的展开状态，应由行数变化触发
+                // 已处理过：若 details 已展开，重渲加速按钮 + 分组排序
+                // formatAndSortUI 内部有行数缓存：行数未变时增量更新（保护展开状态），行数变化时全量重建
+                // 这确保 include-fragment 异步加载新行后能正确分组排序着色
                 if (details.open) {
+                    if (StorageManager.isFeatureEnabled('groupAndSort')) this.formatAndSortUI(details);
                     if (StorageManager.isFeatureEnabled('proxyButtons')) this.processProxyButtons(details);
                 }
                 return;
@@ -1467,7 +1469,7 @@
 
             const sab = Array.from(parent.children).find(c =>
                 !c.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]') &&
-                !c.hasAttribute('data-ghhelper-wrapper') && /show all/i.test(c.textContent));
+                !c.hasAttribute('data-ghhelper-wrapper') && /show all|显示所有|显示全部/i.test(c.textContent));
             if (sab) parent.appendChild(sab);
         },
 
