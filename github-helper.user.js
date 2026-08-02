@@ -160,6 +160,7 @@
 
         setMaxDisplay(count) {
             this.set(STORAGE_KEYS.maxDisplay, count);
+            if (typeof ProxyManager !== 'undefined') ProxyManager._invalidateCache();
         },
 
         getSelectedOS() {
@@ -255,6 +256,12 @@
     // ============================================================
 
     const ProxyManager = {
+        _cache: null,
+
+        _invalidateCache() {
+            this._cache = null;
+        },
+
         getAll() {
             return StorageManager.getAllProxies();
         },
@@ -271,6 +278,7 @@
             proxy.edited = false;
             all.push(proxy);
             StorageManager.setProxies(all);
+            this._invalidateCache();
             LOG('ProxyManager.addCustom:', proxy.name, 'id:', proxy.id, '当前总数:', all.length);
             return proxy;
         },
@@ -283,6 +291,7 @@
             Object.assign(all[idx], updates);
             if (all[idx].builtIn) all[idx].edited = true;
             StorageManager.setProxies(all);
+            this._invalidateCache();
             LOG('ProxyManager.editProxy: id=' + id + ', edited=' + all[idx].edited);
             return true;
         },
@@ -304,6 +313,7 @@
                     StorageManager.setDeletedBuiltinIds(deletedIds);
                 }
             }
+            this._invalidateCache();
             LOG('ProxyManager.deleteProxy: 删除成功, 剩余=' + all.length);
             return true;
         },
@@ -315,6 +325,7 @@
             if (idx === -1) return false;
             all[idx].enabled = !all[idx].enabled;
             StorageManager.setProxies(all);
+            this._invalidateCache();
             LOG('ProxyManager.toggleProxy: id=' + id + ', enabled=' + all[idx].enabled);
             return true;
         },
@@ -338,6 +349,7 @@
             });
             StorageManager.setProxies(all);
             StorageManager.setDeletedBuiltinIds([]);
+            this._invalidateCache();
             LOG('ProxyManager.restoreDefaults: 恢复 ' + restored + ' 条内置源');
             return restored;
         },
@@ -362,8 +374,8 @@
         },
 
         getDisplayProxies(type) {
+            if (this._cache && this._cache.type === type) return this._cache.result;
             const maxDisplay = StorageManager.getMaxDisplay();
-            // 自定义源优先，内置源补齐
             const all = this.getEnabled(type);
             const custom = all.filter(p => !p.builtIn);
             const builtin = all.filter(p => p.builtIn);
@@ -374,6 +386,7 @@
             builtin.slice(0, remaining).forEach(p => result.pinned.push(p));
             builtin.slice(remaining).forEach(p => result.overflow.push(p));
 
+            this._cache = { type, result };
             return result;
         },
 
@@ -1601,6 +1614,12 @@
             const all = [...disp.pinned, ...disp.overflow];
             if (!all.length) { LOG('    processProxyButtons: 无可用加速源'); return; }
 
+            // 批量计算，避免在循环中重复读取
+            const maxDisplay = StorageManager.getMaxDisplay();
+            const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
+            const pinned = all.slice(0, maxPinned);
+            const overflow = all.slice(maxPinned);
+
             rows.forEach(({ row, nl }) => {
                 const href = nl.getAttribute('href');
                 if (!href) return;
@@ -1620,12 +1639,6 @@
                 container.setAttribute('data-ghhelper-nt', '1');
                 container.className = 'ghhelper-proxy-container';
                 container.dataset.proxyCount = String(all.length);
-
-                // 优先展示前 N 个为独立按钮，其余收入下拉
-                const maxDisplay = StorageManager.getMaxDisplay();
-                const maxPinned = Math.min(all.length, Math.max(1, maxDisplay - 1));
-                const pinned = all.slice(0, maxPinned);
-                const overflow = all.slice(maxPinned);
 
                 pinned.forEach(p => {
                     const url = ProxyManager.buildUrl(p, href, 'download');
@@ -3829,6 +3842,10 @@
 
     // 初始化入口（urlchange / 首次加载 / turbo:load 调用）
     let _routeTimer = null;
+    let _routeRetryCount = 0;
+    const MAX_ROUTE_RETRIES = 5;
+    const ROUTE_RETRY_DELAY = 300;
+
     function init() {
         try {
             oneTimeSetup();
@@ -3837,15 +3854,31 @@
             // 延迟再处理一次，规避 GitHub SPA 异步渲染
             // 清除上一次的 timer，避免 urlchange 频繁触发时堆积
             if (_routeTimer) clearTimeout(_routeTimer);
-            _routeTimer = setTimeout(() => {
-                _routeTimer = null;
-                // SPA 异步渲染后 #repository-container-header 可能延迟出现，再更新一次
-                updatePathCache();
-                routeByPathname();
-            }, 1500);
+            _routeRetryCount = 0;
+            _scheduleRouteRetry();
         } catch (e) {
             LOG('init 异常:', e.message);
         }
+    }
+
+    // 优化：使用短间隔渐进重试，检测到关键元素后提前退出
+    function _scheduleRouteRetry() {
+        if (_routeRetryCount >= MAX_ROUTE_RETRIES) return;
+        _routeRetryCount++;
+        _routeTimer = setTimeout(() => {
+            _routeTimer = null;
+            updatePathCache();
+            routeByPathname();
+            // 检测是否需要继续重试：Release 页面检查 details，主页检查 portal
+            if (window.location.pathname.indexOf('/releases') > -1) {
+                if (document.querySelector('details[open]') || _routeRetryCount >= MAX_ROUTE_RETRIES) return;
+                _scheduleRouteRetry();
+            } else {
+                // 其他页面快速进入 observer 回调检测即可
+                if (document.querySelector('#repository-container-header') || _routeRetryCount >= MAX_ROUTE_RETRIES) return;
+                _scheduleRouteRetry();
+            }
+        }, ROUTE_RETRY_DELAY);
     }
 
     // processAllDetails 的缓存状态（模块级，避免闭包累积和高频重复处理）
@@ -3872,7 +3905,10 @@
 
         // 缓存 details 数量，避免高频触发时重复处理
         // 仅当 details 数量变化时才执行完整处理
-        const detailsList = document.querySelectorAll('details');
+        // 优化：优先从 GitHub 的 release 容器中查询 details，避免全树扫描
+        const container = document.querySelector('#repo-content-turbo-container, #js-repo-pjax-container, .js-details-container')
+            || document;
+        const detailsList = container.querySelectorAll('details');
         const detailsCount = detailsList.length;
         if (detailsCount === 0) return;
 
