@@ -1168,6 +1168,10 @@
 
         fetchReleaseData(owner, repo, tag) {
             return new Promise((resolve, reject) => {
+                if (typeof GM_xmlhttpRequest === 'undefined') {
+                    reject('GM_xmlhttpRequest 不可用');
+                    return;
+                }
                 GM_xmlhttpRequest({
                     method: 'GET',
                     url: `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
@@ -1176,7 +1180,7 @@
                         if (r.status === 200) resolve(JSON.parse(r.responseText));
                         else reject(`API ${r.status}`);
                     },
-                    onerror: reject
+                    onerror: (e) => reject('网络错误: ' + (e?.message || '未知'))
                 });
             });
         },
@@ -1228,7 +1232,7 @@
                     LOG('  OS 选择器 change: ' + osSel.value);
                     StorageManager.setSelectedOS(osSel.value);
                     document.querySelectorAll('.ghhelper-os-select').forEach(s => s.value = osSel.value);
-                    this.resortAll();
+                    DOMRenderer._resortAllDebounced();
                 });
                 titleSpan.appendChild(osSel);
 
@@ -1250,7 +1254,7 @@
                     LOG('  架构选择器 change: ' + archSel.value);
                     StorageManager.setSelectedArch(archSel.value);
                     document.querySelectorAll('.ghhelper-arch-select').forEach(s => s.value = archSel.value);
-                    this.resortAll();
+                    DOMRenderer._resortAllDebounced();
                 });
                 titleSpan.appendChild(archSel);
 
@@ -1571,33 +1575,51 @@
             });
         },
 
+        // 防抖重排：OS/Arch 快速切换时合并多次调用
+        _resortAllTimer: null,
+        _resortAllDebounced() {
+            if (this._resortAllTimer) clearTimeout(this._resortAllTimer);
+            this._resortAllTimer = setTimeout(() => {
+                this._resortAllTimer = null;
+                this.resortAll();
+            }, 150);
+        },
+
+        // 清理防抖 timer（用于页面卸载前，避免闭包泄漏）
+        _clearResortTimer() {
+            if (this._resortAllTimer) { clearTimeout(this._resortAllTimer); this._resortAllTimer = null; }
+        },
+
         injectDownloadCounts(detailsElem, assets) {
             if (!assets) return;
-            Array.from(detailsElem.querySelectorAll('li')).filter(r =>
-                r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]')).forEach(row => {
-                    const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
-                    if (!nl) return;
-                    const fn = this.getFileNameFromLink(nl);
-                    const ad = assets.find(a => a.name === fn);
-                    if (!ad || row.querySelector('[data-ghhelper-dlcount]')) return;
+            const rows = [];
+            Array.from(detailsElem.querySelectorAll('li')).forEach(r => {
+                const nl = r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
+                if (nl) rows.push({ row: r, nl });
+            });
+            rows.forEach(({ row, nl }) => {
+                const fn = this.getFileNameFromLink(nl);
+                if (row.querySelector('[data-ghhelper-dlcount]')) return;
+                const ad = assets.find(a => a.name === fn);
+                if (!ad) return;
                     const cs = document.createElement('span');
-                    cs.setAttribute('data-ghhelper-dlcount', '1');
-                    cs.setAttribute('data-ghhelper-element', '1');
-                    cs.setAttribute('data-ghhelper-nt', '1');
-                    cs.style.cssText = 'color:var(--fgColor-muted,var(--color-fg-muted));flex-shrink:0;display:flex;align-items:center;margin-right:8px;white-space:nowrap';
-                    cs.innerHTML = '<svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" style="flex-shrink:0;min-width:16px;margin-right:2px"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg><span>' + this.formatCount(ad.download_count) + '</span>';
-                    let mc = row.querySelector('[data-ghhelper-meta]');
-                    if (!mc) {
-                        mc = document.createElement('div');
-                        mc.setAttribute('data-ghhelper-meta', '1');
-                        mc.setAttribute('data-ghhelper-element', '1');
-                        mc.setAttribute('data-ghhelper-nt', '1');
-                        mc.style.cssText = 'display:flex;align-items:center;flex-shrink:0;margin-right:12px;flex-wrap:wrap;gap:4px';
-                        const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
-                        if (rs) rs.appendChild(mc); else row.appendChild(mc);
-                    }
-                    mc.appendChild(cs);
-                });
+                cs.setAttribute('data-ghhelper-dlcount', '1');
+                cs.setAttribute('data-ghhelper-element', '1');
+                cs.setAttribute('data-ghhelper-nt', '1');
+                cs.style.cssText = 'color:var(--fgColor-muted,var(--color-fg-muted));flex-shrink:0;display:flex;align-items:center;margin-right:8px;white-space:nowrap';
+                cs.innerHTML = '<svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" style="flex-shrink:0;min-width:16px;margin-right:2px"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg><span>' + this.formatCount(ad.download_count) + '</span>';
+                let mc = row.querySelector('[data-ghhelper-meta]');
+                if (!mc) {
+                    mc = document.createElement('div');
+                    mc.setAttribute('data-ghhelper-meta', '1');
+                    mc.setAttribute('data-ghhelper-element', '1');
+                    mc.setAttribute('data-ghhelper-nt', '1');
+                    mc.style.cssText = 'display:flex;align-items:center;flex-shrink:0;margin-right:12px;flex-wrap:wrap;gap:4px';
+                    const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
+                    if (rs) rs.appendChild(mc); else row.appendChild(mc);
+                }
+                mc.appendChild(cs);
+            });
         },
 
         processProxyButtons(detailsElem) {
@@ -3848,12 +3870,11 @@
 
     function init() {
         try {
+            // 清理上一轮的 timer，避免 urlchange 频繁触发时堆积
+            if (_routeTimer) { clearTimeout(_routeTimer); _routeTimer = null; }
             oneTimeSetup();
             updatePathCache(); // 更新路径分流缓存，供全局 observer 使用
             routeByPathname();
-            // 延迟再处理一次，规避 GitHub SPA 异步渲染
-            // 清除上一次的 timer，避免 urlchange 频繁触发时堆积
-            if (_routeTimer) clearTimeout(_routeTimer);
             _routeRetryCount = 0;
             _scheduleRouteRetry();
         } catch (e) {
