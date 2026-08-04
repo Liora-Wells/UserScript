@@ -31,6 +31,15 @@
     const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
     const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
 
+    // requestIdleCallback 降级：在低性能设备上延迟非关键 DOM 操作
+    const runIdle = (fn) => {
+        if (typeof requestIdleCallback !== 'undefined' && !DEBUG) {
+            requestIdleCallback(fn, { timeout: 1000 });
+        } else {
+            setTimeout(fn, 16);
+        }
+    };
+
     // ============================================================
     // 1. 配置常量
     // ============================================================
@@ -1168,20 +1177,28 @@
 
         fetchReleaseData(owner, repo, tag) {
             return new Promise((resolve, reject) => {
-                if (typeof GM_xmlhttpRequest === 'undefined') {
-                    reject('GM_xmlhttpRequest 不可用');
-                    return;
-                }
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
-                    headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.1' },
-                    onload: (r) => {
-                        if (r.status === 200) resolve(JSON.parse(r.responseText));
+                const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`;
+                // 优先使用 GM_xmlhttpRequest（Tampermonkey/Violentmonkey）
+                if (typeof GM_xmlhttpRequest !== 'undefined') {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: apiUrl,
+                        headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.1' },
+                        onload: (r) => {
+                            if (r.status === 200) resolve(JSON.parse(r.responseText));
+                            else reject(`API ${r.status}`);
+                        },
+                        onerror: (e) => reject('网络错误: ' + (e?.message || '未知'))
+                    });
+                } else {
+                    // fallback：使用 fetch API（兼容不支持 GM_xmlhttpRequest 的环境）
+                    fetch(apiUrl, {
+                        headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.1' }
+                    }).then(r => {
+                        if (r.ok) resolve(r.json());
                         else reject(`API ${r.status}`);
-                    },
-                    onerror: (e) => reject('网络错误: ' + (e?.message || '未知'))
-                });
+                    }).catch(e => reject('网络错误: ' + (e?.message || '未知')));
+                }
             });
         },
 
@@ -4095,7 +4112,7 @@
                     // ===== 全局：检测 raw-button 新增（文件查看页） =====
                     if (target.tagName === 'A' && target.dataset && target.dataset.testid === 'raw-button') {
                         LOG('全局 observer: raw-button 新增');
-                        DOMRenderer.processRawButtons();
+                        runIdle(() => DOMRenderer.processRawButtons());
                         return;
                     }
 
@@ -4104,13 +4121,13 @@
                         // 旧版 GitHub：div.Box-row 新增
                         if (target.tagName === 'DIV' && target.classList.contains('Box-row')) {
                             LOG('全局 observer: Box-row 新增');
-                            DOMRenderer.processFileQuickDownload();
+                            runIdle(() => DOMRenderer.processFileQuickDownload());
                             return;
                         }
                         // 新版 React：react-directory-row 新增
                         if (target.tagName === 'DIV' && target.className && target.className.indexOf('react-directory-row') !== -1) {
                             LOG('全局 observer: react-directory-row 新增');
-                            DOMRenderer.processFileQuickDownload();
+                            runIdle(() => DOMRenderer.processFileQuickDownload());
                             return;
                         }
                         // 文件图标 svg.octicon-file / svg.color-fg-muted 新增
@@ -4119,7 +4136,7 @@
                             target.classList.contains('color-fg-muted')
                         )) {
                             LOG('全局 observer: 文件图标 SVG 新增');
-                            DOMRenderer.processFileQuickDownload();
+                            runIdle(() => DOMRenderer.processFileQuickDownload());
                             return;
                         }
                     }
