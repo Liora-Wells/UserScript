@@ -31,13 +31,9 @@
     const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
     const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
 
-    // requestIdleCallback 降级：在低性能设备上延迟非关键 DOM 操作
+    // 延迟非关键 DOM 操作到下一事件循环（setTimeout 保证跨 VM/TM 沙箱最终执行）
     const runIdle = (fn) => {
-        if (typeof requestIdleCallback !== 'undefined' && !DEBUG) {
-            requestIdleCallback(fn, { timeout: 1000 });
-        } else {
-            setTimeout(fn, 16);
-        }
+        setTimeout(fn, 0);
     };
 
     // ============================================================
