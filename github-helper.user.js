@@ -846,6 +846,7 @@
 .ghhelper-notes-wrap:not([open]) .ghhelper-notes-arrow{transform:rotate(-90deg)}
 .ghhelper-notes-title{font-weight:600}
 .ghhelper-notes-version{margin-left:auto;display:inline-block;padding:1px 8px;font-size:11px;border-radius:10px;background-color:rgba(26,127,55,0.14);color:#1a7f37;border:1px solid rgba(26,127,55,0.55)}
+.ghhelper-notes-wrap>.markdown-body{padding:16px;margin:0!important}
 .ghhelper-raw-btn{border-radius:0!important;margin-left:-1px!important}
 .ghhelper-clone-row{margin-top:4px}
 .ghhelper-clone-row>input{cursor:pointer!important}
