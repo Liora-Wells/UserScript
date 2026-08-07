@@ -2384,7 +2384,7 @@
             const files = document.querySelectorAll('div.Box-row svg.octicon.octicon-file, .react-directory-filename-column>svg.color-fg-muted');
             if (files.length === 0) return;
             if (location.pathname.indexOf('/tags') > -1) return;
-            // 幂等检查：已有 ☁ 则跳过
+            // 幂等检查：已有 ☁ 则跳过（注：React 重渲染可能清掉 ☁，由全局 observer 的 removedNodes 分支负责重新注入）
             if (document.querySelectorAll('a.fileDownLink').length > 0) return;
 
             const proxy = ProxyManager.getDefaultRawProxy();
@@ -4141,6 +4141,22 @@
                     if (target.tagName === 'RELATIVE-TIME' && !target.hasAttribute('data-ghhelper-time')) {
                         DOMRenderer.replaceOneTime(target);
                         continue;
+                    }
+                }
+
+                // ===== 检测脚本自身元素被移除（React 重渲染清掉 ☁ 冒泡图标），需重新注入 =====
+                // 增量渲染的 React 文件行会在重建时移除第一个子节点（而非整个行），
+                // 因此仅在 fileQuickDownload 开启且文件行仍存在时重注入
+                if (StorageManager.isFeatureEnabled('fileQuickDownload')) {
+                    for (const removed of mutation.removedNodes) {
+                        if (removed.nodeType !== 1) continue;
+                        // 被移除的是脚本注入的 ☁，或其内部已无 ☁ 的文件行
+                        const hasCloud = removed && removed.classList && removed.classList.contains('fileDownLink');
+                        const hadCloudInside = removed.querySelector ? removed.querySelector('a.fileDownLink[data-ghhelper-element]') !== null : false;
+                        if (!hasCloud && !hadCloudInside) continue;
+                        LOG('全局 observer: ☁ 被移除，重新注入');
+                        runIdle(() => DOMRenderer.processFileQuickDownload());
+                        return;
                     }
                 }
             }
