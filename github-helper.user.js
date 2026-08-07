@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub 助手
 // @namespace    https://github.com/Liora-Wells/UserScript
-// @version      1.6.0
+// @version      1.7.0
 // @description  GitHub Release 增强显示 + 多类型加速下载，兼容中文化插件
 // @author       Liora-Wells
 // @match        https://github.com/*
@@ -26,10 +26,16 @@
 (function () {
     'use strict';
 
-    const DEBUG = false;
+    // DEBUG 日志开关：默认关闭，可在设置面板中切换（切换后立即生效）
+    let DEBUG = false;
     const LOG = (...args) => { if (DEBUG) console.log('[GH助手]', ...args); };
     const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
     const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
+
+    // 延迟非关键 DOM 操作到下一事件循环（setTimeout 保证跨 VM/TM 沙箱最终执行）
+    const runIdle = (fn) => {
+        setTimeout(fn, 0);
+    };
 
     // ============================================================
     // 1. 配置常量
@@ -43,7 +49,8 @@
         selectedOS: 'ghhelper_selected_os',
         selectedArch: 'ghhelper_selected_arch',
         groupsCollapsed: 'ghhelper_proxy_groups_collapsed',
-        defaultRawProxyId: 'ghhelper_default_raw_proxy_id'
+        defaultRawProxyId: 'ghhelper_default_raw_proxy_id',
+        debug: 'ghhelper_debug'
     };
 
     const DEFAULT_FEATURES = {
@@ -130,6 +137,15 @@
         isFeatureEnabled(featureKey) {
             const features = this.getFeatures();
             return features[featureKey] !== undefined ? features[featureKey] : DEFAULT_FEATURES[featureKey];
+        },
+
+        // 调试日志开关（持久化，默认关闭）
+        isDebugEnabled() {
+            return this.get(STORAGE_KEYS.debug, false) === true;
+        },
+
+        setDebugEnabled(val) {
+            this.set(STORAGE_KEYS.debug, !!val);
         },
 
         // 统一列表（内置+自定义），从 storage 读取
@@ -821,16 +837,15 @@
 .ghhelper-arch-reset{padding:3px 8px;font-size:12px;line-height:20px;cursor:pointer;margin-left:4px}
 .ghhelper-meta-wrapper>summary{cursor:pointer;padding:8px 16px;font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted,#8b949e));border-top:1px solid var(--borderColor-muted,var(--color-border-muted,#30363d))}
 .ghhelper-meta-wrapper>summary:hover{color:var(--fgColor-default,var(--color-fg-default,#e6edf3))}
-.ghhelper-notes-wrap{margin:16px 0;border:1px solid var(--color-border-muted,#21262d);border-radius:6px;overflow:hidden}
-.ghhelper-notes-wrap>summary{display:flex;align-items:center;gap:8px;padding:10px 16px;cursor:pointer;list-style:none;background-color:var(--color-canvas-subtle,#161b22);font-size:14px;font-weight:600;color:var(--color-fg-default,#e6edf3);border-bottom:1px solid var(--color-border-muted,#21262d)}
+.ghhelper-notes-wrap{margin:16px 0;border:1px solid rgba(140,149,159,0.28);border-radius:6px;overflow:hidden;background-color:transparent}
+.ghhelper-notes-wrap>summary{display:flex;align-items:center;gap:6px;padding:10px 14px;cursor:pointer;list-style:none;background-color:rgba(140,149,159,0.10);font-size:14px;font-weight:600;color:inherit;border-bottom:1px solid rgba(140,149,159,0.28)}
 .ghhelper-notes-wrap>summary::-webkit-details-marker{display:none}
-.ghhelper-notes-wrap>summary:hover{background-color:var(--color-canvas-inset,#010409)}
+.ghhelper-notes-wrap>summary:hover{background-color:rgba(140,149,159,0.18)}
 .ghhelper-notes-wrap:not([open])>summary{border-bottom:none}
-.ghhelper-notes-arrow{display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;transition:transform 0.12s ease;opacity:0.7}
-.ghhelper-notes-wrap[open]>.ghhelper-notes-arrow{transform:rotate(180deg)}
+.ghhelper-notes-arrow{flex:none;opacity:.7;transition:transform .15s ease}
+.ghhelper-notes-wrap:not([open]) .ghhelper-notes-arrow{transform:rotate(-90deg)}
 .ghhelper-notes-title{font-weight:600}
-.ghhelper-notes-version{display:inline-block;padding:1px 8px;font-size:11px;border-radius:10px;background-color:var(--color-success-subtle,rgba(26,127,55,0.15));color:var(--color-success-fg,#1a7f37);border:1px solid var(--color-success-emphasis,#1a7f37)}
-.ghhelper-notes-wrap>.markdown-body{padding:16px;margin:0!important}
+.ghhelper-notes-version{margin-left:auto;display:inline-block;padding:1px 8px;font-size:11px;border-radius:10px;background-color:rgba(26,127,55,0.14);color:#1a7f37;border:1px solid rgba(26,127,55,0.55)}
 .ghhelper-raw-btn{border-radius:0!important;margin-left:-1px!important}
 .ghhelper-clone-row{margin-top:4px}
 .ghhelper-clone-row>input{cursor:pointer!important}
@@ -839,7 +854,7 @@
 .ghhelper-scroll-top.ghhelper-visible{opacity:1;pointer-events:auto}
 .ghhelper-scroll-top:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
 .ghhelper-settings-overlay{position:fixed;inset:0;z-index:10000;background-color:rgba(1,4,9,0.6);display:flex;align-items:center;justify-content:center}
-.ghhelper-settings-modal{background-color:var(--color-canvas-default,#0d1117);border:1px solid var(--color-border-default,#30363d);border-radius:12px;width:560px;max-width:92vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:var(--shadow-floating-large,0 8px 24px rgba(0,0,0,0.4))}
+.ghhelper-settings-modal{--color-canvas-default:#0d1117;--color-canvas-overlay:#0d1117;--color-canvas-subtle:#161b22;--color-canvas-inset:#010409;--color-border-default:#30363d;--color-border-muted:#21262d;--color-fg-default:#e6edf3;--color-fg-muted:#8b949e;--color-accent-fg:#58a6ff;--color-accent-emphasis:#1f6feb;--color-accent-muted:#388bfd;--color-attention-fg:#d29922;--color-attention-emphasis:#d4a72c;--color-attention-subtle:rgba(187,128,9,0.15);--color-success-fg:#1a7f37;--color-success-emphasis:#1a7f37;--color-success-subtle:rgba(26,127,55,0.15);--color-danger-fg:#f85149;--color-danger-emphasis:#f85149;--color-danger-subtle:rgba(248,81,73,0.1);--color-neutral-muted:rgba(110,118,129,0.4);--color-btn-bg:#21262d;--color-btn-border:rgba(240,246,252,0.1);--color-btn-text:#c9d1d9;--color-btn-hover-bg:#30363d;--color-btn-hover-text:#ffffff;--overlay-bgColor:#0d1117;--bgColor-attention-subtle:rgba(187,140,9,0.15);--fgColor-default:#e6edf3;--fgColor-muted:#8b949e;--fgColor-accent:#58a6ff;--fgColor-accent-emphasis:#1f6feb;--fgColor-attention:#d29922;--button-default-bgColor-rest:#21262d;--button-default-fgColor-rest:#c9d1d9;--button-default-bgColor-hover:#30363d;--button-default-fgColor-hover:#ffffff;--button-default-borderColor-rest:rgba(240,246,252,0.1);--color-action-list-item-default-hover-bg:rgba(177,186,196,0.12);color:#e6edf3;color-scheme:dark;background-color:var(--color-canvas-default,#0d1117);border:1px solid var(--color-border-default,#30363d);border-radius:12px;width:560px;max-width:92vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:var(--shadow-floating-large,0 8px 24px rgba(0,0,0,0.4))}
 .ghhelper-settings-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--color-border-default,#30363d)}
 .ghhelper-settings-header h3{margin:0;font-size:16px}
 .ghhelper-settings-close{background:none;border:none;color:var(--fgColor-muted,var(--color-fg-muted));cursor:pointer;font-size:22px;line-height:1;padding:0}
@@ -1168,16 +1183,28 @@
 
         fetchReleaseData(owner, repo, tag) {
             return new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`,
-                    headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.1' },
-                    onload: (r) => {
-                        if (r.status === 200) resolve(JSON.parse(r.responseText));
+                const apiUrl = `https://api.github.com/repos/${owner}/${repo}/releases/tags/${encodeURIComponent(tag)}`;
+                // 优先使用 GM_xmlhttpRequest（Tampermonkey/Violentmonkey）
+                if (typeof GM_xmlhttpRequest !== 'undefined') {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: apiUrl,
+                        headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.1' },
+                        onload: (r) => {
+                            if (r.status === 200) resolve(JSON.parse(r.responseText));
+                            else reject(`API ${r.status}`);
+                        },
+                        onerror: (e) => reject('网络错误: ' + (e?.message || '未知'))
+                    });
+                } else {
+                    // fallback：使用 fetch API（兼容不支持 GM_xmlhttpRequest 的环境）
+                    fetch(apiUrl, {
+                        headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.1' }
+                    }).then(r => {
+                        if (r.ok) resolve(r.json());
                         else reject(`API ${r.status}`);
-                    },
-                    onerror: reject
-                });
+                    }).catch(e => reject('网络错误: ' + (e?.message || '未知')));
+                }
             });
         },
 
@@ -1228,7 +1255,7 @@
                     LOG('  OS 选择器 change: ' + osSel.value);
                     StorageManager.setSelectedOS(osSel.value);
                     document.querySelectorAll('.ghhelper-os-select').forEach(s => s.value = osSel.value);
-                    this.resortAll();
+                    DOMRenderer._resortAllDebounced();
                 });
                 titleSpan.appendChild(osSel);
 
@@ -1250,7 +1277,7 @@
                     LOG('  架构选择器 change: ' + archSel.value);
                     StorageManager.setSelectedArch(archSel.value);
                     document.querySelectorAll('.ghhelper-arch-select').forEach(s => s.value = archSel.value);
-                    this.resortAll();
+                    DOMRenderer._resortAllDebounced();
                 });
                 titleSpan.appendChild(archSel);
 
@@ -1565,39 +1592,62 @@
             const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]:not([data-ghhelper-wrapper])');
             LOG('  resortAll 调用, 已处理 details 数:', targets.length);
             targets.forEach(d => {
-                if (d.open && StorageManager.isFeatureEnabled('groupAndSort')) {
-                    this.formatAndSortUI(d, true);
+                if (d.open) {
+                    if (StorageManager.isFeatureEnabled('groupAndSort')) {
+                        this.formatAndSortUI(d, true);
+                    }
+                    if (StorageManager.isFeatureEnabled('proxyButtons')) {
+                        this.processProxyButtons(d);
+                    }
                 }
             });
         },
 
+        // 防抖重排：OS/Arch 快速切换时合并多次调用
+        _resortAllTimer: null,
+        _resortAllDebounced() {
+            if (this._resortAllTimer) clearTimeout(this._resortAllTimer);
+            this._resortAllTimer = setTimeout(() => {
+                this._resortAllTimer = null;
+                this.resortAll();
+            }, 150);
+        },
+
+        // 清理防抖 timer（用于页面卸载前，避免闭包泄漏）
+        _clearResortTimer() {
+            if (this._resortAllTimer) { clearTimeout(this._resortAllTimer); this._resortAllTimer = null; }
+        },
+
         injectDownloadCounts(detailsElem, assets) {
             if (!assets) return;
-            Array.from(detailsElem.querySelectorAll('li')).filter(r =>
-                r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]')).forEach(row => {
-                    const nl = row.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
-                    if (!nl) return;
-                    const fn = this.getFileNameFromLink(nl);
-                    const ad = assets.find(a => a.name === fn);
-                    if (!ad || row.querySelector('[data-ghhelper-dlcount]')) return;
+            const rows = [];
+            Array.from(detailsElem.querySelectorAll('li')).forEach(r => {
+                const nl = r.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
+                if (nl) rows.push({ row: r, nl });
+            });
+            rows.forEach(({ row, nl }) => {
+                const fn = this.getFileNameFromLink(nl);
+                if (row.querySelector('[data-ghhelper-dlcount]')) return;
+                const ad = assets.find(a => a.name === fn);
+                if (!ad) return;
                     const cs = document.createElement('span');
-                    cs.setAttribute('data-ghhelper-dlcount', '1');
-                    cs.setAttribute('data-ghhelper-element', '1');
-                    cs.setAttribute('data-ghhelper-nt', '1');
-                    cs.style.cssText = 'color:var(--fgColor-muted,var(--color-fg-muted));flex-shrink:0;display:flex;align-items:center;margin-right:8px;white-space:nowrap';
-                    cs.innerHTML = '<svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" style="flex-shrink:0;min-width:16px;margin-right:2px"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg><span>' + this.formatCount(ad.download_count) + '</span>';
-                    let mc = row.querySelector('[data-ghhelper-meta]');
-                    if (!mc) {
-                        mc = document.createElement('div');
-                        mc.setAttribute('data-ghhelper-meta', '1');
-                        mc.setAttribute('data-ghhelper-element', '1');
-                        mc.setAttribute('data-ghhelper-nt', '1');
-                        mc.style.cssText = 'display:flex;align-items:center;flex-shrink:0;margin-right:12px;flex-wrap:wrap;gap:4px';
-                        const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
-                        if (rs) rs.appendChild(mc); else row.appendChild(mc);
-                    }
-                    mc.appendChild(cs);
-                });
+                cs.setAttribute('data-ghhelper-dlcount', '1');
+                cs.setAttribute('data-ghhelper-element', '1');
+                cs.setAttribute('data-ghhelper-nt', '1');
+                cs.style.cssText = 'color:var(--fgColor-muted,var(--color-fg-muted));flex-shrink:0;display:flex;align-items:center;margin-right:8px;white-space:nowrap';
+                cs.innerHTML = '<svg aria-hidden="true" height="16" viewBox="0 0 16 16" width="16" style="flex-shrink:0;min-width:16px;margin-right:2px"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06l1.97 1.969Z"/></svg><span>' + this.formatCount(ad.download_count) + '</span>';
+                let mc = row.querySelector('[data-ghhelper-meta]');
+                if (!mc) {
+                    mc = document.createElement('div');
+                    mc.setAttribute('data-ghhelper-meta', '1');
+                    mc.setAttribute('data-ghhelper-element', '1');
+                    mc.setAttribute('data-ghhelper-nt', '1');
+                    mc.style.cssText = 'display:flex;align-items:center;flex-shrink:0;margin-right:12px;flex-wrap:wrap;gap:4px';
+                    const rs = row.querySelector('[class*="col-"]') || row.querySelector('[class*="flex-auto"]');
+                    if (rs) rs.appendChild(mc); else row.appendChild(mc);
+                }
+                mc.appendChild(cs);
+            });
         },
 
         processProxyButtons(detailsElem) {
@@ -2349,7 +2399,7 @@
             const files = document.querySelectorAll('div.Box-row svg.octicon.octicon-file, .react-directory-filename-column>svg.color-fg-muted');
             if (files.length === 0) return;
             if (location.pathname.indexOf('/tags') > -1) return;
-            // 幂等检查：已有 ☁ 则跳过
+            // 幂等检查：已有 ☁ 则跳过（注：React 重渲染可能清掉 ☁，由全局 observer 的 removedNodes 分支负责重新注入）
             if (document.querySelectorAll('a.fileDownLink').length > 0) return;
 
             const proxy = ProxyManager.getDefaultRawProxy();
@@ -2535,7 +2585,7 @@
                 // summary：简洁的标题栏，不抢夺内容的视觉焦点
                 const summary = document.createElement('summary');
                 summary.setAttribute('data-ghhelper-nt', '1');
-                summary.innerHTML = '<span class="ghhelper-notes-arrow"></span>' +
+                summary.innerHTML = '<svg class="ghhelper-notes-arrow" width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4 6 7.5 9.5 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
                     '<span class="ghhelper-notes-title">更新日志</span>' +
                     (version ? '<span class="ghhelper-notes-version">' + escapeHtml(version) + '</span>' : '');
                 wrap.appendChild(summary);
@@ -3656,7 +3706,30 @@
                 html += '</div>';
             });
             html += '</div>';
+
+            // 调试日志开关（独立于功能开关，仅控制控制台日志输出）
+            html += '<div class="ghhelper-settings-section"><h4>调试</h4>';
+            html += '<div class="ghhelper-feature-card" data-ghhelper-nt="1" style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--color-border-default,#30363d);border-radius:8px;margin-bottom:8px">';
+            html += '<span data-ghhelper-nt="1" style="font-size:18px;line-height:1.4">🔧</span>';
+            html += '<div data-ghhelper-nt="1" style="flex:1;min-width:0">';
+            html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+            html += '<span data-ghhelper-nt="1" style="font-weight:600;font-size:13px">调试日志</span>';
+            html += '</div>';
+            html += '<div data-ghhelper-nt="1" style="font-size:12px;color:var(--fgColor-default,var(--color-fg-default));margin-bottom:2px">在控制台输出 [GH助手] 前缀的诊断日志，便于排查问题</div>';
+            html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">影响：打开后可在开发者工具控制台查看详细运行日志</div>';
+            html += '</div>';
+            html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (DEBUG ? 'checked' : '') + ' data-debug="1"><span class="ghhelper-toggle-slider"></span></label>';
+            html += '</div>';
+            html += '</div>';
             body.innerHTML = html;
+
+            body.querySelectorAll('input[data-debug]').forEach(cb => {
+                cb.addEventListener('change', function () {
+                    DEBUG = this.checked;
+                    StorageManager.setDebugEnabled(DEBUG);
+                    Toast.info(DEBUG ? '调试日志已开启' : '调试日志已关闭');
+                });
+            });
 
             body.querySelectorAll('input[data-feature]').forEach(cb => {
                 cb.addEventListener('change', function () {
@@ -3848,12 +3921,13 @@
 
     function init() {
         try {
+            // 从持久化配置加载调试日志开关（默认关闭）
+            DEBUG = StorageManager.isDebugEnabled();
+            // 清理上一轮的 timer，避免 urlchange 频繁触发时堆积
+            if (_routeTimer) { clearTimeout(_routeTimer); _routeTimer = null; }
             oneTimeSetup();
             updatePathCache(); // 更新路径分流缓存，供全局 observer 使用
             routeByPathname();
-            // 延迟再处理一次，规避 GitHub SPA 异步渲染
-            // 清除上一次的 timer，避免 urlchange 频繁触发时堆积
-            if (_routeTimer) clearTimeout(_routeTimer);
             _routeRetryCount = 0;
             _scheduleRouteRetry();
         } catch (e) {
@@ -3996,18 +4070,22 @@
                         // GitHub Release 资产列表容器特征
                         if (target.tagName === 'DIV' && target.dataset.viewComponent === 'true' && target.classList[0] === 'Box') {
                             LOG('全局 observer: Release Box 新增');
+                            // 资产可能已异步加载了部分行，勿因 details 数量未变而短路，强制重扫
+                            _lastDetailsCount = 0;
                             processAllDetailsDebounced();
                             return;
                         }
                         // 新增的 details 元素
                         if (target.tagName === 'DETAILS') {
                             LOG('全局 observer: details 新增');
+                            _lastDetailsCount = 0;
                             processAllDetailsDebounced();
                             return;
                         }
                         // 新增的 include-fragment（Assets 异步加载容器）
                         if (target.tagName === 'INCLUDE-FRAGMENT') {
                             LOG('全局 observer: include-fragment 新增');
+                            _lastDetailsCount = 0;
                             processAllDetailsDebounced();
                             return;
                         }
@@ -4019,14 +4097,17 @@
                             target.querySelector('a[href*="/releases/tag/"]') &&
                             target.querySelector('details')) {
                             LOG('全局 observer: 发行版容器新增（Show more releases）');
+                            _lastDetailsCount = 0;
                             processAllDetailsDebounced();
                             return;
                         }
-                        // 新增的下载链接（资产展开后异步加载）
-                        if (target.tagName === 'A') {
-                            const href = target.getAttribute('href') || '';
-                            if (href.indexOf('/releases/download/') > -1 || href.indexOf('/archive/') > -1) {
-                                LOG('全局 observer: 下载链接新增');
+                        // 新增的下载链接（资产展开后异步加载；可能以容器整体插入，如 include-fragment/UL/LI）
+                        if (target.tagName === 'A' || (target.querySelector && target.querySelector('a'))) {
+                            const hasDl = target.tagName === 'A'
+                                ? (target.getAttribute('href') || '').indexOf('/releases/download/') > -1 || (target.getAttribute('href') || '').indexOf('/archive/') > -1
+                                : !!target.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
+                            if (hasDl) {
+                                LOG('全局 observer: 下载链接/容器新增');
                                 // include-fragment 加载完成后 details 数量未变，但 details 内部内容已变化
                                 // 清除缓存强制 processAllDetails 重新处理，使已处理 details 重渲加速按钮
                                 _lastDetailsCount = 0;
@@ -4074,7 +4155,7 @@
                     // ===== 全局：检测 raw-button 新增（文件查看页） =====
                     if (target.tagName === 'A' && target.dataset && target.dataset.testid === 'raw-button') {
                         LOG('全局 observer: raw-button 新增');
-                        DOMRenderer.processRawButtons();
+                        runIdle(() => DOMRenderer.processRawButtons());
                         return;
                     }
 
@@ -4083,13 +4164,13 @@
                         // 旧版 GitHub：div.Box-row 新增
                         if (target.tagName === 'DIV' && target.classList.contains('Box-row')) {
                             LOG('全局 observer: Box-row 新增');
-                            DOMRenderer.processFileQuickDownload();
+                            runIdle(() => DOMRenderer.processFileQuickDownload());
                             return;
                         }
                         // 新版 React：react-directory-row 新增
                         if (target.tagName === 'DIV' && target.className && target.className.indexOf('react-directory-row') !== -1) {
                             LOG('全局 observer: react-directory-row 新增');
-                            DOMRenderer.processFileQuickDownload();
+                            runIdle(() => DOMRenderer.processFileQuickDownload());
                             return;
                         }
                         // 文件图标 svg.octicon-file / svg.color-fg-muted 新增
@@ -4098,7 +4179,7 @@
                             target.classList.contains('color-fg-muted')
                         )) {
                             LOG('全局 observer: 文件图标 SVG 新增');
-                            DOMRenderer.processFileQuickDownload();
+                            runIdle(() => DOMRenderer.processFileQuickDownload());
                             return;
                         }
                     }
@@ -4107,6 +4188,22 @@
                     if (target.tagName === 'RELATIVE-TIME' && !target.hasAttribute('data-ghhelper-time')) {
                         DOMRenderer.replaceOneTime(target);
                         continue;
+                    }
+                }
+
+                // ===== 检测脚本自身元素被移除（React 重渲染清掉 ☁ 冒泡图标），需重新注入 =====
+                // 增量渲染的 React 文件行会在重建时移除第一个子节点（而非整个行），
+                // 因此仅在 fileQuickDownload 开启且文件行仍存在时重注入
+                if (StorageManager.isFeatureEnabled('fileQuickDownload')) {
+                    for (const removed of mutation.removedNodes) {
+                        if (removed.nodeType !== 1) continue;
+                        // 被移除的是脚本注入的 ☁，或其内部已无 ☁ 的文件行
+                        const hasCloud = removed && removed.classList && removed.classList.contains('fileDownLink');
+                        const hadCloudInside = removed.querySelector ? removed.querySelector('a.fileDownLink[data-ghhelper-element]') !== null : false;
+                        if (!hasCloud && !hadCloudInside) continue;
+                        LOG('全局 observer: ☁ 被移除，重新注入');
+                        runIdle(() => DOMRenderer.processFileQuickDownload());
+                        return;
                     }
                 }
             }
