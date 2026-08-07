@@ -4035,18 +4035,22 @@
                         // GitHub Release 资产列表容器特征
                         if (target.tagName === 'DIV' && target.dataset.viewComponent === 'true' && target.classList[0] === 'Box') {
                             LOG('全局 observer: Release Box 新增');
+                            // 资产可能已异步加载了部分行，勿因 details 数量未变而短路，强制重扫
+                            _lastDetailsCount = 0;
                             processAllDetailsDebounced();
                             return;
                         }
                         // 新增的 details 元素
                         if (target.tagName === 'DETAILS') {
                             LOG('全局 observer: details 新增');
+                            _lastDetailsCount = 0;
                             processAllDetailsDebounced();
                             return;
                         }
                         // 新增的 include-fragment（Assets 异步加载容器）
                         if (target.tagName === 'INCLUDE-FRAGMENT') {
                             LOG('全局 observer: include-fragment 新增');
+                            _lastDetailsCount = 0;
                             processAllDetailsDebounced();
                             return;
                         }
@@ -4058,6 +4062,7 @@
                             target.querySelector('a[href*="/releases/tag/"]') &&
                             target.querySelector('details')) {
                             LOG('全局 observer: 发行版容器新增（Show more releases）');
+                            _lastDetailsCount = 0;
                             processAllDetailsDebounced();
                             return;
                         }
