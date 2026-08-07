@@ -26,7 +26,8 @@
 (function () {
     'use strict';
 
-    const DEBUG = false;
+    // DEBUG 日志开关：默认关闭，可在设置面板中切换（切换后立即生效）
+    let DEBUG = false;
     const LOG = (...args) => { if (DEBUG) console.log('[GH助手]', ...args); };
     const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
     const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
@@ -48,7 +49,8 @@
         selectedOS: 'ghhelper_selected_os',
         selectedArch: 'ghhelper_selected_arch',
         groupsCollapsed: 'ghhelper_proxy_groups_collapsed',
-        defaultRawProxyId: 'ghhelper_default_raw_proxy_id'
+        defaultRawProxyId: 'ghhelper_default_raw_proxy_id',
+        debug: 'ghhelper_debug'
     };
 
     const DEFAULT_FEATURES = {
@@ -135,6 +137,15 @@
         isFeatureEnabled(featureKey) {
             const features = this.getFeatures();
             return features[featureKey] !== undefined ? features[featureKey] : DEFAULT_FEATURES[featureKey];
+        },
+
+        // 调试日志开关（持久化，默认关闭）
+        isDebugEnabled() {
+            return this.get(STORAGE_KEYS.debug, false) === true;
+        },
+
+        setDebugEnabled(val) {
+            this.set(STORAGE_KEYS.debug, !!val);
         },
 
         // 统一列表（内置+自定义），从 storage 读取
@@ -3696,7 +3707,30 @@
                 html += '</div>';
             });
             html += '</div>';
+
+            // 调试日志开关（独立于功能开关，仅控制控制台日志输出）
+            html += '<div class="ghhelper-settings-section"><h4>调试</h4>';
+            html += '<div class="ghhelper-feature-card" data-ghhelper-nt="1" style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--color-border-default,#30363d);border-radius:8px;margin-bottom:8px">';
+            html += '<span data-ghhelper-nt="1" style="font-size:18px;line-height:1.4">🔧</span>';
+            html += '<div data-ghhelper-nt="1" style="flex:1;min-width:0">';
+            html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+            html += '<span data-ghhelper-nt="1" style="font-weight:600;font-size:13px">调试日志</span>';
+            html += '</div>';
+            html += '<div data-ghhelper-nt="1" style="font-size:12px;color:var(--fgColor-default,var(--color-fg-default));margin-bottom:2px">在控制台输出 [GH助手] 前缀的诊断日志，便于排查问题</div>';
+            html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">影响：打开后可在开发者工具控制台查看详细运行日志</div>';
+            html += '</div>';
+            html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (DEBUG ? 'checked' : '') + ' data-debug="1"><span class="ghhelper-toggle-slider"></span></label>';
+            html += '</div>';
+            html += '</div>';
             body.innerHTML = html;
+
+            body.querySelectorAll('input[data-debug]').forEach(cb => {
+                cb.addEventListener('change', function () {
+                    DEBUG = this.checked;
+                    StorageManager.setDebugEnabled(DEBUG);
+                    Toast.info(DEBUG ? '调试日志已开启' : '调试日志已关闭');
+                });
+            });
 
             body.querySelectorAll('input[data-feature]').forEach(cb => {
                 cb.addEventListener('change', function () {
@@ -3888,6 +3922,8 @@
 
     function init() {
         try {
+            // 从持久化配置加载调试日志开关（默认关闭）
+            DEBUG = StorageManager.isDebugEnabled();
             // 清理上一轮的 timer，避免 urlchange 频繁触发时堆积
             if (_routeTimer) { clearTimeout(_routeTimer); _routeTimer = null; }
             oneTimeSetup();
