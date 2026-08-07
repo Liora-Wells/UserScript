@@ -1582,8 +1582,13 @@
             const targets = document.querySelectorAll('details[data-ghhelper-processed="true"]:not([data-ghhelper-wrapper])');
             LOG('  resortAll 调用, 已处理 details 数:', targets.length);
             targets.forEach(d => {
-                if (d.open && StorageManager.isFeatureEnabled('groupAndSort')) {
-                    this.formatAndSortUI(d, true);
+                if (d.open) {
+                    if (StorageManager.isFeatureEnabled('groupAndSort')) {
+                        this.formatAndSortUI(d, true);
+                    }
+                    if (StorageManager.isFeatureEnabled('proxyButtons')) {
+                        this.processProxyButtons(d);
+                    }
                 }
             });
         },
@@ -4056,11 +4061,13 @@
                             processAllDetailsDebounced();
                             return;
                         }
-                        // 新增的下载链接（资产展开后异步加载）
-                        if (target.tagName === 'A') {
-                            const href = target.getAttribute('href') || '';
-                            if (href.indexOf('/releases/download/') > -1 || href.indexOf('/archive/') > -1) {
-                                LOG('全局 observer: 下载链接新增');
+                        // 新增的下载链接（资产展开后异步加载；可能以容器整体插入，如 include-fragment/UL/LI）
+                        if (target.tagName === 'A' || (target.querySelector && target.querySelector('a'))) {
+                            const hasDl = target.tagName === 'A'
+                                ? (target.getAttribute('href') || '').indexOf('/releases/download/') > -1 || (target.getAttribute('href') || '').indexOf('/archive/') > -1
+                                : !!target.querySelector('a[href*="/releases/download/"],a[href*="/archive/"]');
+                            if (hasDl) {
+                                LOG('全局 observer: 下载链接/容器新增');
                                 // include-fragment 加载完成后 details 数量未变，但 details 内部内容已变化
                                 // 清除缓存强制 processAllDetails 重新处理，使已处理 details 重渲加速按钮
                                 _lastDetailsCount = 0;
