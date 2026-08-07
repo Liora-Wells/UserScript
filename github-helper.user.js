@@ -837,16 +837,15 @@
 .ghhelper-arch-reset{padding:3px 8px;font-size:12px;line-height:20px;cursor:pointer;margin-left:4px}
 .ghhelper-meta-wrapper>summary{cursor:pointer;padding:8px 16px;font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted,#8b949e));border-top:1px solid var(--borderColor-muted,var(--color-border-muted,#30363d))}
 .ghhelper-meta-wrapper>summary:hover{color:var(--fgColor-default,var(--color-fg-default,#e6edf3))}
-.ghhelper-notes-wrap{margin:16px 0;border:1px solid var(--color-border-muted,#21262d);border-radius:6px;overflow:hidden}
-.ghhelper-notes-wrap>summary{display:flex;align-items:center;gap:8px;padding:10px 16px;cursor:pointer;list-style:none;background-color:var(--color-canvas-subtle,#161b22);font-size:14px;font-weight:600;color:var(--color-fg-default,#e6edf3);border-bottom:1px solid var(--color-border-muted,#21262d)}
+.ghhelper-notes-wrap{margin:16px 0;border:1px solid rgba(140,149,159,0.28);border-radius:6px;overflow:hidden;background-color:transparent}
+.ghhelper-notes-wrap>summary{display:flex;align-items:center;gap:6px;padding:10px 14px;cursor:pointer;list-style:none;background-color:rgba(140,149,159,0.10);font-size:14px;font-weight:600;color:inherit;border-bottom:1px solid rgba(140,149,159,0.28)}
 .ghhelper-notes-wrap>summary::-webkit-details-marker{display:none}
-.ghhelper-notes-wrap>summary:hover{background-color:var(--color-canvas-inset,#010409)}
+.ghhelper-notes-wrap>summary:hover{background-color:rgba(140,149,159,0.18)}
 .ghhelper-notes-wrap:not([open])>summary{border-bottom:none}
-.ghhelper-notes-arrow{display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;transition:transform 0.12s ease;opacity:0.7}
-.ghhelper-notes-wrap[open]>.ghhelper-notes-arrow{transform:rotate(180deg)}
+.ghhelper-notes-arrow{flex:none;opacity:.7;transition:transform .15s ease}
+.ghhelper-notes-wrap:not([open]) .ghhelper-notes-arrow{transform:rotate(-90deg)}
 .ghhelper-notes-title{font-weight:600}
-.ghhelper-notes-version{display:inline-block;padding:1px 8px;font-size:11px;border-radius:10px;background-color:var(--color-success-subtle,rgba(26,127,55,0.15));color:var(--color-success-fg,#1a7f37);border:1px solid var(--color-success-emphasis,#1a7f37)}
-.ghhelper-notes-wrap>.markdown-body{padding:16px;margin:0!important}
+.ghhelper-notes-version{margin-left:auto;display:inline-block;padding:1px 8px;font-size:11px;border-radius:10px;background-color:rgba(26,127,55,0.14);color:#1a7f37;border:1px solid rgba(26,127,55,0.55)}
 .ghhelper-raw-btn{border-radius:0!important;margin-left:-1px!important}
 .ghhelper-clone-row{margin-top:4px}
 .ghhelper-clone-row>input{cursor:pointer!important}
@@ -2586,7 +2585,7 @@
                 // summary：简洁的标题栏，不抢夺内容的视觉焦点
                 const summary = document.createElement('summary');
                 summary.setAttribute('data-ghhelper-nt', '1');
-                summary.innerHTML = '<span class="ghhelper-notes-arrow"></span>' +
+                summary.innerHTML = '<svg class="ghhelper-notes-arrow" width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4 6 7.5 9.5 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
                     '<span class="ghhelper-notes-title">更新日志</span>' +
                     (version ? '<span class="ghhelper-notes-version">' + escapeHtml(version) + '</span>' : '');
                 wrap.appendChild(summary);
