@@ -2,7 +2,7 @@
 // @name         二维码生成器
 // @namespace    https://github.com/Liora-Wells/UserScript
 // @version      1.1.0
-// @description  二维码生成器：生成/解析/批量/多选/黑白名单/历史记录，兼容 Tampermonkey 与 Violentmonkey
+// @description  二维码生成器：生成/解析/批量/多选/黑白名单/历史记录
 // @author       Liora-Wells
 // @match        *://*/*
 // @updateURL    https://github.com/Liora-Wells/UserScript/raw/main/qrcode-generator.user.js
@@ -74,6 +74,8 @@
         });
     }
 
+    var SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) ? GM_info.script.version : '1.1.0';
+
     // ========== 日志模块 ==========
     var DEBUG = false;
     function log() { if (DEBUG) console.log.apply(console, ['[QR]'].concat([].slice.call(arguments))); }
@@ -88,6 +90,8 @@
         size: 240,
         fgColor: '#000000',
         bgColor: '#ffffff',
+        qrMargin: 16,
+        qrBorderRadius: 4,
         history: [],
         maxHistory: 10,
         theme: 'auto',
@@ -101,6 +105,9 @@
         var cfg = {};
         for (var k in DEFAULT_CONFIG) cfg[k] = DEFAULT_CONFIG[k];
         for (var k in saved) cfg[k] = saved[k];
+        // 旧存档兼容：补默认值
+        if (typeof cfg.qrMargin !== 'number') cfg.qrMargin = DEFAULT_CONFIG.qrMargin;
+        if (typeof cfg.qrBorderRadius !== 'number') cfg.qrBorderRadius = DEFAULT_CONFIG.qrBorderRadius;
         return cfg;
     }
     function saveConfig() { storageSet('qrConfig', CONFIG); }
@@ -146,7 +153,8 @@
         .qr-close{cursor:pointer;font-size:20px;line-height:1;color:#999;padding:0 4px}
         .qr-close:hover{color:#f55}
         .qr-canvas{text-align:center;margin:10px 0;min-height:40px}
-        .qr-canvas canvas{max-width:100%;border-radius:4px}
+        .qr-canvas{padding:var(--qr-margin,16px);background:var(--qr-canvas-bg,#fff);border-radius:var(--qr-radius,4px);display:inline-block;line-height:0}
+        .qr-canvas canvas{max-width:100%;border-radius:var(--qr-radius,4px);display:block}
         .qr-canvas-placeholder{font-size:13px;color:#888;padding:30px 0;text-align:center}
         .qr-input{width:100%;padding:8px;border:1px solid var(--qr-input-border);background:var(--qr-input-bg);color:var(--qr-text);border-radius:6px;box-sizing:border-box;font-size:13px;margin-bottom:10px}
         .qr-btns{display:flex;gap:8px;flex-wrap:wrap}
@@ -205,7 +213,15 @@
     }
 
     // ========== QR 核心 ==========
+    // 深色主题仅影响面板 chrome，码体始终用纯净背景，避免影响识别
+    function getQRColors() {
+        return { fg: CONFIG.fgColor, bg: CONFIG.bgColor };
+    }
     function generateQRCanvas(text, size, fgColor, bgColor) {
+        if (!text || !text.trim()) throw new Error('EMPTY');
+        if (fgColor === undefined || bgColor === undefined) {
+            var c = getQRColors(); fgColor = c.fg; bgColor = c.bg;
+        }
         if (!text || !text.trim()) throw new Error('EMPTY');
         var qr = qrcode(0, 'M');
         qr.addData(text);
@@ -231,6 +247,7 @@
 
     function generateQRSvg(text, size) {
         if (!text || !text.trim()) throw new Error('EMPTY');
+        if (size === undefined) size = CONFIG.size;
         var qr = qrcode(0, 'M');
         qr.addData(text);
         qr.make();
@@ -373,6 +390,9 @@
             + '  <button class="qr-btn secondary" data-act="settings">\u2699\uFE0F 设置</button>'
             + '</div>'
             + '<div class="qr-history"></div>';
+        // 样式自定义：边距 / 圆角 作用于画布容器（不影响码体本身颜色，避免影响解析）
+        canvasBox.style.setProperty('--qr-margin', (CONFIG.qrMargin || 0) + 'px');
+        canvasBox.style.setProperty('--qr-radius', (CONFIG.qrBorderRadius || 0) + 'px');
 
         var canvasBox = panel.querySelector('.qr-canvas');
         var input = panel.querySelector('.qr-input');
@@ -573,6 +593,9 @@
             + '<div class="qr-row"><label>尺寸:</label><input type="number" id="cfg-size" value="' + CONFIG.size + '" min="100" max="600">'
             + ' <label>前景:</label><input type="color" id="cfg-fg" value="' + CONFIG.fgColor + '">'
             + ' <label>背景:</label><input type="color" id="cfg-bg" value="' + CONFIG.bgColor + '"></div>'
+            + '<div class="qr-row"><label>内边距:</label><input type="number" id="cfg-margin" value="' + CONFIG.qrMargin + '" min="0" max="40" style="width:80px"> px'
+            + ' <label>圆角:</label><input type="number" id="cfg-radius" value="' + CONFIG.qrBorderRadius + '" min="0" max="24" style="width:80px"> px</div>'
+            + '<div class="qr-tip">内边距/圆角仅影响容器留白，不改变二维码本身颜色，深色主题下也能正常解析</div>'
             + '<label>主题:</label><select id="cfg-theme" class="qr-input" style="margin:0">'
             + '  <option value="light"' + (CONFIG.theme==='light'?' selected':'') + '>浅色</option>'
             + '  <option value="dark"' + (CONFIG.theme==='dark'?' selected':'') + '>深色</option>'
@@ -583,7 +606,7 @@
             + '<label>白名单（每行一个，支持 *.example.com）：</label><textarea id="cfg-wl" placeholder="example.com\n*.github.com">' + escapeHtml(CONFIG.whitelist.join('\n')) + '</textarea>'
             + '<label>黑名单（每行一个）：</label><textarea id="cfg-bl" placeholder="adsite.com">' + escapeHtml(CONFIG.blacklist.join('\n')) + '</textarea>'
             + '<h3>\uD83D\uDCE6 批量生成</h3><div class="qr-row"><label>最大显示数量:</label><input type="number" id="cfg-maxbatch" value="' + CONFIG.maxBatch + '" min="1" max="20"></div>'
-            + '<h3>\uD83D\uDCDC 历史</h3><div class="qr-row"><button class="qr-btn ghost" id="cfg-clearhist">清空历史</button><span class="qr-tip">当前 ' + CONFIG.history.length + ' 条</span></div>'
+            + '<h3>\uD83D\uDCDC 历史</h3><div id="cfg-hist-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--qr-input-border);border-radius:6px;padding:6px;background:var(--qr-input-bg);margin-bottom:6px"></div><div class="qr-row"><button class="qr-btn ghost" id="cfg-clearhist">清空历史</button><span class="qr-tip">当前 ' + CONFIG.history.length + ' 条</span></div>'
             + '<label style="margin-top:10px"><input type="checkbox" id="cfg-debug"' + (CONFIG.debug?' checked':'') + '> 调试日志（控制台 [QR] 前缀）</label>'
             + '<div class="qr-btns" style="margin-top:15px"><button class="qr-btn" id="cfg-save">\uD83D\uDCBE 保存</button><button class="qr-btn secondary" id="cfg-cancel">取消</button></div>';
 
@@ -595,16 +618,51 @@
         panel.querySelector('#cfg-cancel').onclick = closeQR;
         makeDraggable(panel, panel.querySelector('.qr-title'));
 
+        // 渲染历史列表（设置面板内可浏览与删除）
+        var histList = panel.querySelector('#cfg-hist-list');
+        function renderHistList() {
+            histList.innerHTML = '';
+            if (CONFIG.history.length === 0) {
+                histList.innerHTML = '<div style="font-size:12px;color:#888;text-align:center;padding:8px">暂无记录</div>';
+                return;
+            }
+            CONFIG.history.forEach(function (h) {
+                var row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:4px 6px;font-size:12px;border-bottom:1px solid var(--qr-border)';
+                var txt = document.createElement('span');
+                txt.textContent = h;
+                txt.title = h;
+                txt.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px';
+                var del = document.createElement('span');
+                del.textContent = '\u2715';
+                del.title = '删除';
+                del.style.cssText = 'cursor:pointer;color:#999;padding:0 4px';
+                del.onmouseenter = function () { del.style.color = '#f55'; };
+                del.onmouseleave = function () { del.style.color = '#999'; };
+                del.onclick = function () {
+                    removeHistory(h);
+                    renderHistList();
+                    panel.querySelector('.qr-tip').textContent = '当前 ' + CONFIG.history.length + ' 条';
+                };
+                row.appendChild(txt); row.appendChild(del);
+                histList.appendChild(row);
+            });
+        }
+        renderHistList();
+
         panel.querySelector('#cfg-clearhist').onclick = function () {
             CONFIG.history = [];
             saveConfig();
             toast('历史已清空', 'success');
+            renderHistList();
             panel.querySelector('.qr-tip').textContent = '当前 0 条';
         };
         panel.querySelector('#cfg-save').onclick = function () {
             CONFIG.size = parseInt(panel.querySelector('#cfg-size').value, 10) || 240;
             CONFIG.fgColor = panel.querySelector('#cfg-fg').value;
             CONFIG.bgColor = panel.querySelector('#cfg-bg').value;
+            CONFIG.qrMargin = Math.max(0, Math.min(40, parseInt(panel.querySelector('#cfg-margin').value, 10) || 0));
+            CONFIG.qrBorderRadius = Math.max(0, Math.min(24, parseInt(panel.querySelector('#cfg-radius').value, 10) || 0));
             CONFIG.theme = panel.querySelector('#cfg-theme').value;
             CONFIG.whitelistMode = panel.querySelector('#cfg-wlmode').checked;
             CONFIG.whitelist = panel.querySelector('#cfg-wl').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
@@ -760,6 +818,6 @@
         });
     } catch (e) { errLog('菜单注册失败', e); }
 
-    log('二维码生成器 v1.1.0 已加载 | AUTO_RUN=' + AUTO_RUN + ' | 右键浮动按钮 ' + (AUTO_RUN ? '已启用' : '已禁用（黑名单）') + ' | Alt+Q 当前页');
+    log('二维码生成器 v' + SCRIPT_VERSION + ' 已加载 | AUTO_RUN=' + AUTO_RUN + ' | 右键浮动按钮 ' + (AUTO_RUN ? '已启用' : '已禁用（黑名单）') + ' | Alt+Q 当前页');
 
 })();
