@@ -744,6 +744,7 @@
             + ' <label>容错:</label><select id="cfg-ec" class="cfg-live" style="width:92px"><option value="L"' + (CONFIG.qrECLevel==='L'?' selected':'') + '>L 低</option><option value="M"' + (CONFIG.qrECLevel==='M'?' selected':'') + '>M 中</option><option value="Q"' + (CONFIG.qrECLevel==='Q'?' selected':'') + '>Q 高</option><option value="H"' + (CONFIG.qrECLevel==='H'?' selected':'') + '>H 最高</option></select></div>'
             + '<div class="qr-tip">内边距/圆角仅影响容器留白，不改变二维码本身颜色，深色主题下也能正常解析；容错越高越易被遮挡/污损后识别</div>'
             + '<div class="qr-settings-preview"><div class="qr-settings-preview-label">实时预览</div><div id="cfg-preview-box"></div></div>'
+            + '<div class="qr-row"><button class="qr-btn ghost" id="cfg-resetstyle">\u21BB 恢复默认样式</button><span class="qr-tip">仅重置尺寸/颜色/边距/圆角/容错，需点击保存生效</span></div>'
             + '<label>主题:</label><select id="cfg-theme" class="qr-input" style="margin:0">'
             + '  <option value="light"' + (CONFIG.theme==='light'?' selected':'') + '>浅色</option>'
             + '  <option value="dark"' + (CONFIG.theme==='dark'?' selected':'') + '>深色</option>'
@@ -800,6 +801,17 @@
             el.addEventListener('input', renderPreview);
             el.addEventListener('change', renderPreview);
         });
+        // 一键恢复默认样式（仅二维码样式项，需保存后生效）
+        panel.querySelector('#cfg-resetstyle').onclick = function () {
+            panel.querySelector('#cfg-size').value = DEFAULT_CONFIG.size;
+            panel.querySelector('#cfg-fg').value = DEFAULT_CONFIG.fgColor;
+            panel.querySelector('#cfg-bg').value = DEFAULT_CONFIG.bgColor;
+            panel.querySelector('#cfg-margin').value = DEFAULT_CONFIG.qrMargin;
+            panel.querySelector('#cfg-radius').value = DEFAULT_CONFIG.qrBorderRadius;
+            panel.querySelector('#cfg-ec').value = DEFAULT_CONFIG.qrECLevel;
+            renderPreview();
+            toast('已恢复默认样式，点击保存生效', 'info');
+        };
         panel.querySelector('#cfg-theme').addEventListener('change', function () {
             // 主题实时预览：改面板 data-theme
             var v = panel.querySelector('#cfg-theme').value;
