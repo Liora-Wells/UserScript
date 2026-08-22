@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         二维码生成器
 // @namespace    https://github.com/Liora-Wells/UserScript
-// @version      1.2.0
+// @version      1.3.0
 // @description  二维码生成器：生成/解析/批量/多选/黑白名单/历史记录
 // @author       Liora-Wells
 // @match        *://*/*
