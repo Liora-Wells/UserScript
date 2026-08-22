@@ -173,8 +173,8 @@
         .qr-grid-item canvas{width:140px;height:140px;cursor:pointer}
         .qr-grid-item canvas:hover{transform:scale(1.05)}
         .qr-grid-label{font-size:11px;color:#888;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .qr-float-btn{position:fixed;z-index:2147483647;width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3);font-size:20px;transition:all .2s;pointer-events:auto}
-        .qr-float-btn:hover{transform:scale(1.15)}
+        .qr-float-btn{position:fixed;z-index:2147483647;width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:18px;transition:all .2s;pointer-events:auto;opacity:.92}
+        .qr-float-btn:hover{transform:scale(1.08);opacity:1}
         .qr-selected{outline:3px solid var(--qr-accent)!important;outline-offset:2px}
         .qr-multiselect-hint{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--qr-accent);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:2147483647;box-shadow:0 4px 12px rgba(0,0,0,.3)}
         .qr-settings{min-width:380px}
@@ -222,7 +222,6 @@
         if (fgColor === undefined || bgColor === undefined) {
             var c = getQRColors(); fgColor = c.fg; bgColor = c.bg;
         }
-        if (!text || !text.trim()) throw new Error('EMPTY');
         var qr = qrcode(0, 'M');
         qr.addData(text);
         qr.make();
@@ -390,11 +389,11 @@
             + '  <button class="qr-btn secondary" data-act="settings">\u2699\uFE0F 设置</button>'
             + '</div>'
             + '<div class="qr-history"></div>';
+
+        var canvasBox = panel.querySelector('.qr-canvas');
         // 样式自定义：边距 / 圆角 作用于画布容器（不影响码体本身颜色，避免影响解析）
         canvasBox.style.setProperty('--qr-margin', (CONFIG.qrMargin || 0) + 'px');
         canvasBox.style.setProperty('--qr-radius', (CONFIG.qrBorderRadius || 0) + 'px');
-
-        var canvasBox = panel.querySelector('.qr-canvas');
         var input = panel.querySelector('.qr-input');
         input.value = text;
 
@@ -695,21 +694,39 @@
             var hasLink = link && link.href && /^https?:/i.test(link.href);
             if (selection || hasLink) {
                 setTimeout(function () {
+                    // 避开系统右键菜单：尽量贴鼠标左上方，必要时贴视口边缘
+                    var BTN = 36, GAP = 10;
+                    var x = e.clientX - BTN - GAP;
+                    var y = e.clientY - BTN - GAP;
+                    if (x < GAP) x = Math.min(e.clientX + GAP, window.innerWidth - BTN - GAP);
+                    if (y < GAP) y = Math.min(e.clientY + GAP, window.innerHeight - BTN - GAP);
                     floatBtn = document.createElement('div');
                     floatBtn.className = 'qr-float-btn';
                     floatBtn.textContent = '\uD83D\uDCF1';
-                    floatBtn.style.left = Math.min(e.clientX + 10, window.innerWidth - 60) + 'px';
-                    floatBtn.style.top = Math.min(e.clientY + 10, window.innerHeight - 60) + 'px';
-                    floatBtn.onclick = function () {
+                    floatBtn.title = '生成二维码（点击）';
+                    floatBtn.style.left = x + 'px';
+                    floatBtn.style.top = y + 'px';
+                    floatBtn.addEventListener('click', function (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
                         if (selection) showQR(selection, '选中文本');
                         else if (link) showQR(link.href, '链接二维码');
                         removeFloatBtn();
-                    };
+                    });
+                    // 滚动/点击/再右键/ESC 都自动消失，避免残留
+                    floatBtnTimer = setTimeout(removeFloatBtn, 4000);
                     document.body.appendChild(floatBtn);
-                    floatBtnTimer = setTimeout(removeFloatBtn, 5000);
                 }, 10);
             }
         }, false);
+        // 任何滚动、点击空白、按 ESC 或再次右键都移除浮动按钮
+        document.addEventListener('scroll', removeFloatBtn, true);
+        document.addEventListener('mousedown', function (e) {
+            if (floatBtn && !floatBtn.contains(e.target)) removeFloatBtn();
+        }, true);
+        document.addEventListener('keydown', function (e) {
+            if (floatBtn && e.key === 'Escape') removeFloatBtn();
+        });
     } else {
         // 非 AUTO_RUN 仍需记录 lastRightClickTarget 供菜单“生成选中内容/链接”使用
         document.addEventListener('contextmenu', function (e) {
