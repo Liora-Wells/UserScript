@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         二维码生成器
 // @namespace    https://github.com/Liora-Wells/UserScript
-// @version      1.1.0
+// @version      1.2.0
 // @description  二维码生成器：生成/解析/批量/多选/黑白名单/历史记录
 // @author       Liora-Wells
 // @match        *://*/*
@@ -74,7 +74,7 @@
         });
     }
 
-    var SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) ? GM_info.script.version : '1.1.0';
+    var SCRIPT_VERSION = (typeof GM_info !== 'undefined' && GM_info.script && GM_info.script.version) ? GM_info.script.version : '';
 
     // ========== 日志模块 ==========
     var DEBUG = false;
@@ -1028,6 +1028,6 @@
         });
     } catch (e) { errLog('菜单注册失败', e); }
 
-    log('二维码生成器 v' + SCRIPT_VERSION + ' 已加载 | AUTO_RUN=' + AUTO_RUN + ' | 右键浮动按钮 ' + (AUTO_RUN ? '已启用' : '已禁用（黑名单）') + ' | Alt+Q 当前页');
+    log('二维码生成器' + (SCRIPT_VERSION ? ' v' + SCRIPT_VERSION : '') + ' 已加载 | AUTO_RUN=' + AUTO_RUN + ' | 右键浮动按钮 ' + (AUTO_RUN ? '已启用' : '已禁用（黑名单）') + ' | Alt+Q 当前页');
 
 })();
