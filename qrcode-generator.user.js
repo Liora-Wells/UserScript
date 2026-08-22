@@ -7,6 +7,7 @@
 // @match        *://*/*
 // @updateURL    https://github.com/Liora-Wells/UserScript/raw/main/qrcode-generator.user.js
 // @downloadURL  https://github.com/Liora-Wells/UserScript/raw/main/qrcode-generator.user.js
+// @license      MIT
 // @grant        GM_registerMenuCommand
 // @grant        GM_getValue
 // @grant        GM_setValue
