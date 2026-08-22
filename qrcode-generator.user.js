@@ -91,11 +91,12 @@
         fgColor: '#000000',
         bgColor: '#ffffff',
         qrMargin: 16,
-        qrBorderRadius: 4,
+        qrBorderRadius: 12,
+        qrECLevel: 'M',
         history: [],
-        maxHistory: 10,
+        maxHistory: 5,
         theme: 'auto',
-        maxBatch: 9,
+        maxBatch: 12,
         debug: false
     };
 
@@ -108,6 +109,9 @@
         // 旧存档兼容：补默认值
         if (typeof cfg.qrMargin !== 'number') cfg.qrMargin = DEFAULT_CONFIG.qrMargin;
         if (typeof cfg.qrBorderRadius !== 'number') cfg.qrBorderRadius = DEFAULT_CONFIG.qrBorderRadius;
+        if (typeof cfg.qrECLevel !== 'string') cfg.qrECLevel = DEFAULT_CONFIG.qrECLevel;
+        if (typeof cfg.maxHistory !== 'number' || cfg.maxHistory > 10) cfg.maxHistory = DEFAULT_CONFIG.maxHistory;
+        if (typeof cfg.maxBatch !== 'number') cfg.maxBatch = DEFAULT_CONFIG.maxBatch;
         return cfg;
     }
     function saveConfig() { storageSet('qrConfig', CONFIG); }
@@ -145,54 +149,79 @@
 
     // ========== 样式注入 ==========
     GM_addStyle(`
-        .qr-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:2147483646;display:flex;align-items:center;justify-content:center;animation:qrFadeIn .2s ease}
+        .qr-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,14,28,.45);backdrop-filter:blur(4px);z-index:2147483646;display:flex;align-items:center;justify-content:center;animation:qrFadeIn .2s ease;padding:16px;box-sizing:border-box}
         @keyframes qrFadeIn{from{opacity:0}to{opacity:1}}
-        .qr-panel{--qr-bg:#fff;--qr-surface:#fafafa;--qr-text:#333;--qr-border:#eee;--qr-input-bg:#fff;--qr-input-border:#ddd;--qr-hover:#f0f0f0;--qr-accent:#4a90e2;background:var(--qr-bg);color:var(--qr-text);border-radius:12px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.3);min-width:300px;max-width:90vw;max-height:90vh;overflow-y:auto;position:relative;font-family:-apple-system,"Segoe UI",sans-serif}
-        .qr-panel[data-theme="dark"]{--qr-bg:#1e1e1e;--qr-surface:#2d2d2d;--qr-text:#eee;--qr-border:#444;--qr-input-bg:#2d2d2d;--qr-input-border:#444;--qr-hover:#333;--qr-accent:#6ab0ff}
-        .qr-title{font-size:14px;font-weight:600;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;cursor:move;user-select:none;touch-action:none}
-        .qr-close{cursor:pointer;font-size:20px;line-height:1;color:#999;padding:0 4px}
-        .qr-close:hover{color:#f55}
-        .qr-canvas{text-align:center;margin:10px 0;min-height:40px}
-        .qr-canvas{padding:var(--qr-margin,16px);background:var(--qr-canvas-bg,#fff);border-radius:var(--qr-radius,4px);display:inline-block;line-height:0}
-        .qr-canvas canvas{max-width:100%;border-radius:var(--qr-radius,4px);display:block}
-        .qr-canvas-placeholder{font-size:13px;color:#888;padding:30px 0;text-align:center}
-        .qr-input{width:100%;padding:8px;border:1px solid var(--qr-input-border);background:var(--qr-input-bg);color:var(--qr-text);border-radius:6px;box-sizing:border-box;font-size:13px;margin-bottom:10px}
+        .qr-panel{--qr-bg:#ffffff;--qr-surface:#f6f7fb;--qr-surface-2:#eef0f6;--qr-text:#1c2333;--qr-muted:#6b7280;--qr-border:#e5e7ef;--qr-input-bg:#fff;--qr-input-border:#d6d9e6;--qr-hover:#eef0f6;--qr-accent:#4a6cf7;--qr-accent-2:#7a5cff;background:var(--qr-bg);color:var(--qr-text);border-radius:16px;padding:18px 18px 16px;box-shadow:0 16px 48px rgba(16,24,64,.22),0 2px 10px rgba(16,24,64,.12);min-width:340px;max-width:min(560px,92vw);max-height:90vh;overflow-y:auto;position:relative;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;border:1px solid rgba(255,255,255,.6)}
+        .qr-panel[data-theme="dark"]{--qr-bg:#1a1d27;--qr-surface:#232838;--qr-surface-2:#2c3246;--qr-text:#e8ecf5;--qr-muted:#9aa3b8;--qr-border:#2e344a;--qr-input-bg:#1e2333;--qr-input-border:#2e344a;--qr-hover:#232838;--qr-accent:#6b7cff;--qr-accent-2:#9a6bff;box-shadow:0 16px 48px rgba(0,0,0,.45),0 2px 10px rgba(0,0,0,.35);border-color:rgba(255,255,255,.06)}
+        .qr-title{font-size:14px;font-weight:700;letter-spacing:.02em;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;cursor:move;user-select:none;touch-action:none;color:var(--qr-text)}
+        .qr-title span:first-child{display:flex;align-items:center;gap:6px}
+        .qr-close{cursor:pointer;font-size:18px;line-height:1;color:var(--qr-muted);width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:8px;transition:all .2s}
+        .qr-close:hover{color:#ff5a5a;background:var(--qr-hover)}
+        .qr-canvas-wrap{display:flex;justify-content:center;align-items:center;margin:10px 0 12px;min-height:80px}
+        .qr-canvas{padding:var(--qr-margin,16px);background:#fff;border-radius:var(--qr-radius,12px);display:inline-flex;justify-content:center;align-items:center;line-height:0;box-shadow:0 4px 18px rgba(16,24,64,.12);border:1px solid rgba(0,0,0,.06)}
+        .qr-panel[data-theme="dark"] .qr-canvas{box-shadow:0 4px 18px rgba(0,0,0,.35)}
+        .qr-canvas canvas{max-width:100%;border-radius:calc(var(--qr-radius,12px) - 4px);display:block}
+        .qr-canvas-placeholder{font-size:13px;color:var(--qr-muted);padding:28px 12px;text-align:center;border:1px dashed var(--qr-border);border-radius:12px;background:var(--qr-surface);width:100%;box-sizing:border-box}
+        .qr-input{width:100%;padding:10px 12px;border:1px solid var(--qr-input-border);background:var(--qr-input-bg);color:var(--qr-text);border-radius:10px;box-sizing:border-box;font-size:13px;margin-bottom:12px;transition:border-color .2s, box-shadow .2s;outline:none}
+        .qr-input:focus{border-color:var(--qr-accent);box-shadow:0 0 0 3px rgba(74,108,247,.18)}
         .qr-btns{display:flex;gap:8px;flex-wrap:wrap}
-        .qr-btn{flex:1;padding:8px 12px;border:none;border-radius:6px;cursor:pointer;font-size:13px;transition:all .2s;background:var(--qr-accent);color:#fff;min-width:80px}
-        .qr-btn:hover{opacity:.85}
-        .qr-btn.secondary{background:#888}
-        .qr-btn.ghost{background:transparent;color:var(--qr-accent);border:1px solid var(--qr-accent)}
-        .qr-history{margin-top:10px;max-height:140px;overflow-y:auto;font-size:12px}
-        .qr-history-item{display:flex;justify-content:space-between;align-items:center;padding:4px 6px;border-radius:4px;white-space:nowrap;overflow:hidden}
-        .qr-history-text{flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;margin-right:6px}
+        .qr-btn{flex:1;padding:9px 12px;border:none;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;transition:all .18s;background:linear-gradient(135deg,var(--qr-accent),var(--qr-accent-2));color:#fff;min-width:84px;box-shadow:0 4px 12px rgba(74,108,247,.28)}
+        .qr-btn:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(74,108,247,.34);opacity:1}
+        .qr-btn:active{transform:translateY(0)}
+        .qr-btn.secondary{background:var(--qr-surface-2);color:var(--qr-text);box-shadow:none;border:1px solid var(--qr-border)}
+        .qr-btn.secondary:hover{background:var(--qr-hover)}
+        .qr-btn.ghost{background:transparent;color:var(--qr-accent);border:1px solid var(--qr-accent);box-shadow:none}
+        .qr-btn.ghost:hover{background:rgba(74,108,247,.08)}
+        .qr-history{margin-top:12px;max-height:140px;overflow-y:auto;font-size:12px;padding-right:2px}
+        .qr-history-item{display:flex;justify-content:space-between;align-items:center;padding:7px 8px;border-radius:8px;white-space:nowrap;overflow:hidden;transition:background .15s;border:1px solid transparent}
+        .qr-history-item:hover{background:var(--qr-surface);border-color:var(--qr-border)}
+        .qr-history-text{flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;margin-right:8px;color:var(--qr-text)}
         .qr-history-text:hover{color:var(--qr-accent)}
-        .qr-history-del{cursor:pointer;color:#999;font-size:14px;padding:0 4px;flex-shrink:0}
-        .qr-history-del:hover{color:#f55}
-        .qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin:15px 0}
-        .qr-grid-item{text-align:center;padding:10px;border:1px solid var(--qr-border);border-radius:8px;background:var(--qr-surface)}
-        .qr-grid-item canvas{width:140px;height:140px;cursor:pointer}
-        .qr-grid-item canvas:hover{transform:scale(1.05)}
-        .qr-grid-label{font-size:11px;color:#888;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .qr-history-del{cursor:pointer;color:var(--qr-muted);font-size:13px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:6px;flex-shrink:0;transition:all .15s}
+        .qr-history-del:hover{color:#ff5a5a;background:rgba(255,90,90,.12)}
+        .qr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin:14px 0}
+        .qr-grid-item{text-align:center;padding:12px 10px 10px;border:1px solid var(--qr-border);border-radius:12px;background:var(--qr-surface);transition:all .18s;display:flex;flex-direction:column;align-items:center}
+        .qr-grid-item:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(16,24,64,.12);border-color:var(--qr-accent)}
+        .qr-panel[data-theme="dark"] .qr-grid-item:hover{box-shadow:0 8px 20px rgba(0,0,0,.3)}
+        .qr-grid-item canvas{width:140px;height:140px;cursor:pointer;flex-shrink:0;background:#fff;border-radius:8px;padding:6px;box-sizing:border-box}
+        .qr-grid-item canvas:hover{transform:none}
+        .qr-grid-label{font-size:11px;color:var(--qr-muted);margin-top:8px;word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;white-space:normal;line-height:1.4;min-height:30px;width:100%}
+        .qr-grid-actions{margin-top:6px;display:flex;gap:6px;justify-content:center}
+        .qr-grid-copy{font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--qr-border);background:var(--qr-bg);color:var(--qr-text);cursor:pointer}
+        .qr-grid-copy:hover{border-color:var(--qr-accent);color:var(--qr-accent)}
         .qr-float-btn{position:fixed;z-index:2147483647;width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:18px;transition:all .2s;pointer-events:auto;opacity:.92}
         .qr-float-btn:hover{transform:scale(1.08);opacity:1}
         .qr-selected{outline:3px solid var(--qr-accent)!important;outline-offset:2px}
         .qr-multiselect-hint{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--qr-accent);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:2147483647;box-shadow:0 4px 12px rgba(0,0,0,.3)}
-        .qr-settings{min-width:380px}
-        .qr-settings h3{margin:10px 0 6px;font-size:14px}
-        .qr-settings label{display:block;font-size:13px;margin:6px 0 2px}
-        .qr-settings textarea{width:100%;min-height:60px;padding:6px;font-size:12px;border:1px solid var(--qr-input-border);background:var(--qr-input-bg);color:var(--qr-text);border-radius:4px;resize:vertical;font-family:monospace;box-sizing:border-box}
-        .qr-row{display:flex;gap:10px;align-items:center;margin:6px 0}
-        .qr-row input[type="color"]{width:40px;height:30px;border:none;cursor:pointer}
-        .qr-row input[type="number"]{width:80px;padding:4px}
-        .qr-tip{font-size:11px;color:#888;margin-top:4px}
-        .qr-warning{background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:8px;font-size:12px;color:#856404;margin:8px 0}
-        .qr-panel[data-theme="dark"] .qr-warning{background:#332b00;border-color:#665500;color:#ffc107}
-        .qr-toast{position:fixed;top:20px;right:20px;z-index:2147483647;background:#333;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.3);animation:qrToastIn .25s ease;max-width:320px;word-break:break-all}
-        .qr-toast.qr-toast-success{background:#2e7d32}
+        .qr-settings{min-width:380px;max-width:min(560px,92vw)}
+        .qr-settings h3{margin:14px 0 8px;font-size:13px;font-weight:700;letter-spacing:.02em;color:var(--qr-text);display:flex;align-items:center;gap:6px}
+        .qr-settings h3:first-of-type{margin-top:6px}
+        .qr-settings label{display:block;font-size:12px;margin:6px 0 2px;color:var(--qr-muted)}
+        .qr-settings textarea{width:100%;min-height:60px;padding:8px 10px;font-size:12px;border:1px solid var(--qr-input-border);background:var(--qr-input-bg);color:var(--qr-text);border-radius:8px;resize:vertical;font-family:monospace;box-sizing:border-box;outline:none;transition:border-color .2s}
+        .qr-settings textarea:focus{border-color:var(--qr-accent)}
+        .qr-settings-preview{margin:10px 0;padding:12px;border:1px solid var(--qr-border);border-radius:12px;background:var(--qr-surface);display:flex;flex-direction:column;align-items:center;gap:8px}
+        .qr-settings-preview canvas{max-width:100%;background:#fff;border-radius:8px;padding:6px;box-sizing:border-box}
+        .qr-settings-preview-label{font-size:11px;color:var(--qr-muted)}
+        .qr-row{display:flex;gap:10px;align-items:center;margin:6px 0;flex-wrap:wrap}
+        .qr-row input[type="color"]{width:36px;height:28px;border:1px solid var(--qr-border);border-radius:6px;cursor:pointer;padding:0;background:transparent}
+        .qr-row input[type="number"], .qr-row select{padding:6px 8px;border:1px solid var(--qr-input-border);background:var(--qr-input-bg);color:var(--qr-text);border-radius:8px;font-size:12px;outline:none}
+        .qr-row input[type="number"]{width:76px}
+        .qr-row select{flex:1}
+        .qr-tip{font-size:11px;color:var(--qr-muted);margin-top:4px;line-height:1.4}
+        .qr-warning{background:#fff7d6;border:1px solid #f5d76e;border-radius:8px;padding:8px 10px;font-size:11px;color:#7a5d00;margin:8px 0;line-height:1.4}
+        .qr-panel[data-theme="dark"] .qr-warning{background:#2a2500;border-color:#5a4d00;color:#ffd54f}
+        .qr-toast{position:fixed;top:20px;right:20px;z-index:2147483647;background:#1c2333;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.28);animation:qrToastIn .25s ease;max-width:320px;word-break:break-all}
+        .qr-toast.qr-toast-success{background:#1b7a3d}
         .qr-toast.qr-toast-error{background:#c62828}
         .qr-toast.qr-toast-out{animation:qrToastOut .25s ease forwards}
         @keyframes qrToastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
         @keyframes qrToastOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(20px)}}
+        .qr-scan-results{margin:10px 0;display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow-y:auto}
+        .qr-scan-item{display:flex;gap:10px;align-items:center;padding:8px;border:1px solid var(--qr-border);border-radius:10px;background:var(--qr-surface)}
+        .qr-scan-item img{width:56px;height:56px;object-fit:contain;background:#fff;border-radius:6px;padding:4px;flex-shrink:0}
+        .qr-scan-item-text{flex:1;min-width:0}
+        .qr-scan-item-text div{font-size:12px;word-break:break-all;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+        .qr-scan-item-actions{display:flex;gap:6px;flex-shrink:0}
     `);
 
     // ========== Toast 组件 ==========
@@ -222,7 +251,8 @@
         if (fgColor === undefined || bgColor === undefined) {
             var c = getQRColors(); fgColor = c.fg; bgColor = c.bg;
         }
-        var qr = qrcode(0, 'M');
+        var ec = CONFIG.qrECLevel || 'M';
+        var qr = qrcode(0, ec);
         qr.addData(text);
         qr.make();
         var count = qr.getModuleCount();
@@ -247,7 +277,8 @@
     function generateQRSvg(text, size) {
         if (!text || !text.trim()) throw new Error('EMPTY');
         if (size === undefined) size = CONFIG.size;
-        var qr = qrcode(0, 'M');
+        var ec = CONFIG.qrECLevel || 'M';
+        var qr = qrcode(0, ec);
         qr.addData(text);
         qr.make();
         var count = qr.getModuleCount();
@@ -298,6 +329,103 @@
             if (file) decodeImageFile(file);
         };
         input.click();
+    }
+
+    // 识别当前页所有可见图片中的二维码
+    function scanPageQRCodes() {
+        var imgs = Array.from(document.querySelectorAll('img'));
+        // 同域 canvas 截图兜底：若页内无可解图片，会提示
+        if (imgs.length === 0) { toast('当前页没有图片可识别', 'error'); return; }
+        toast('正在扫描当前页图片...', 'info');
+        var results = [];
+        var pending = 0;
+        var done = function () {
+            pending--;
+            if (pending !== 0) return;
+            if (results.length === 0) { toast('未在当前页图片中找到二维码', 'error'); return; }
+            showScanResults(results);
+        };
+        // 过滤不可见 / 过小图片
+        var candidates = imgs.filter(function (img) {
+            try {
+                var r = img.getBoundingClientRect();
+                if (r.width < 32 || r.height < 32) return false;
+                if (!img.complete || !img.naturalWidth) return false;
+                return true;
+            } catch (e) { return false; }
+        });
+        if (candidates.length === 0) { toast('当前页没有可识别的图片', 'error'); return; }
+        // 限制数量避免卡顿
+        candidates = candidates.slice(0, 20);
+        pending = candidates.length;
+        candidates.forEach(function (img) {
+            try {
+                var w = img.naturalWidth, h = img.naturalHeight;
+                var MAX = 600;
+                var scale = Math.min(1, MAX / Math.max(w, h));
+                var cw = Math.round(w * scale), ch = Math.round(h * scale);
+                var canvas = document.createElement('canvas');
+                canvas.width = cw; canvas.height = ch;
+                var ctx = canvas.getContext('2d');
+                // 跨域图片会污染 canvas，try-catch 隔离
+                ctx.drawImage(img, 0, 0, cw, ch);
+                var data;
+                try { data = ctx.getImageData(0, 0, cw, ch); }
+                catch (e) { done(); return; }
+                var code = null;
+                try { code = jsQR(data.data, cw, ch); } catch (e) { /* ignore */ }
+                if (code && code.data) {
+                    results.push({ text: code.data, src: img.currentSrc || img.src, w: w, h: h });
+                }
+            } catch (e) { /* 单张失败不影响其他 */ }
+            done();
+        });
+    }
+
+    function showScanResults(results) {
+        closeQR();
+        var overlay = document.createElement('div');
+        overlay.className = 'qr-overlay';
+        var panel = document.createElement('div');
+        panel.className = 'qr-panel';
+        applyThemeToPanel(panel);
+        panel.innerHTML = '<div class="qr-title"><span>🔍 识别结果（' + results.length + ' 个）</span><span class="qr-close">✕</span></div><div class="qr-scan-results"></div>';
+        var box = panel.querySelector('.qr-scan-results');
+        results.forEach(function (r, i) {
+            var item = document.createElement('div');
+            item.className = 'qr-scan-item';
+            var thumb = document.createElement('img');
+            thumb.src = r.src;
+            thumb.alt = '';
+            var textWrap = document.createElement('div');
+            textWrap.className = 'qr-scan-item-text';
+            var t = document.createElement('div');
+            t.textContent = r.text;
+            t.title = r.text;
+            textWrap.appendChild(t);
+            var acts = document.createElement('div');
+            acts.className = 'qr-scan-item-actions';
+            var copyBtn = document.createElement('button');
+            copyBtn.className = 'qr-grid-copy';
+            copyBtn.textContent = '复制';
+            copyBtn.onclick = function () { copyText(r.text).then(function (ok) { toast(ok ? '已复制' : '复制失败', ok ? 'success' : 'error'); }); };
+            var openBtn = document.createElement('button');
+            openBtn.className = 'qr-grid-copy';
+            openBtn.textContent = '生成二维码';
+            openBtn.onclick = function () { showQR(r.text, '识别结果 ' + (i + 1)); };
+            acts.appendChild(copyBtn);
+            acts.appendChild(openBtn);
+            item.appendChild(thumb);
+            item.appendChild(textWrap);
+            item.appendChild(acts);
+            box.appendChild(item);
+        });
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+        currentOverlay = overlay;
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) closeQR(); });
+        panel.querySelector('.qr-close').onclick = closeQR;
+        makeDraggable(panel, panel.querySelector('.qr-title'));
     }
 
     // ========== 全局状态 ==========
@@ -379,7 +507,7 @@
 
         panel.innerHTML = ''
             + '<div class="qr-title"><span>' + escapeHtml(title) + '</span><span class="qr-close" title="关闭 (Esc / Alt+W)">\u2715</span></div>'
-            + '<div class="qr-canvas"></div>'
+            + '<div class="qr-canvas-wrap"><div class="qr-canvas"></div></div>'
             + '<input class="qr-input" type="text" placeholder="输入内容实时生成二维码">'
             + '<div class="qr-btns">'
             + '  <button class="qr-btn" data-act="copy">\uD83D\uDCCB 复制文本</button>'
@@ -562,9 +690,25 @@
             item.appendChild(canvas);
             var label = document.createElement('div');
             label.className = 'qr-grid-label';
-            label.textContent = link.length > 28 ? link.slice(0, 28) + '...' : link;
+            label.textContent = link;
             label.title = link;
             item.appendChild(label);
+            var acts = document.createElement('div');
+            acts.className = 'qr-grid-actions';
+            var copyBtn = document.createElement('button');
+            copyBtn.className = 'qr-grid-copy';
+            copyBtn.textContent = '复制链接';
+            copyBtn.onclick = function (ev) {
+                ev.stopPropagation();
+                copyText(link).then(function (ok) { toast(ok ? '已复制' : '复制失败', ok ? 'success' : 'error'); });
+            };
+            var openBtn = document.createElement('button');
+            openBtn.className = 'qr-grid-copy';
+            openBtn.textContent = '查看';
+            openBtn.onclick = function (ev) { ev.stopPropagation(); showQR(link, '链接 ' + (i + 1)); };
+            acts.appendChild(copyBtn);
+            acts.appendChild(openBtn);
+            item.appendChild(acts);
             grid.appendChild(item);
         });
 
@@ -593,8 +737,10 @@
             + ' <label>前景:</label><input type="color" id="cfg-fg" value="' + CONFIG.fgColor + '">'
             + ' <label>背景:</label><input type="color" id="cfg-bg" value="' + CONFIG.bgColor + '"></div>'
             + '<div class="qr-row"><label>内边距:</label><input type="number" id="cfg-margin" value="' + CONFIG.qrMargin + '" min="0" max="40" style="width:80px"> px'
-            + ' <label>圆角:</label><input type="number" id="cfg-radius" value="' + CONFIG.qrBorderRadius + '" min="0" max="24" style="width:80px"> px</div>'
-            + '<div class="qr-tip">内边距/圆角仅影响容器留白，不改变二维码本身颜色，深色主题下也能正常解析</div>'
+            + ' <label>圆角:</label><input type="number" id="cfg-radius" value="' + CONFIG.qrBorderRadius + '" min="0" max="24" style="width:80px"> px'
+            + ' <label>容错:</label><select id="cfg-ec" style="width:92px"><option value="L"' + (CONFIG.qrECLevel==='L'?' selected':'') + '>L 低</option><option value="M"' + (CONFIG.qrECLevel==='M'?' selected':'') + '>M 中</option><option value="Q"' + (CONFIG.qrECLevel==='Q'?' selected':'') + '>Q 高</option><option value="H"' + (CONFIG.qrECLevel==='H'?' selected':'') + '>H 最高</option></select></div>'
+            + '<div class="qr-tip">内边距/圆角仅影响容器留白，不改变二维码本身颜色，深色主题下也能正常解析；容错越高越易被遮挡/污损后识别</div>'
+            + '<div class="qr-settings-preview"><div class="qr-settings-preview-label">实时预览</div><div id="cfg-preview-box"></div></div>'
             + '<label>主题:</label><select id="cfg-theme" class="qr-input" style="margin:0">'
             + '  <option value="light"' + (CONFIG.theme==='light'?' selected':'') + '>浅色</option>'
             + '  <option value="dark"' + (CONFIG.theme==='dark'?' selected':'') + '>深色</option>'
@@ -616,6 +762,51 @@
         panel.querySelector('.qr-close').onclick = closeQR;
         panel.querySelector('#cfg-cancel').onclick = closeQR;
         makeDraggable(panel, panel.querySelector('.qr-title'));
+
+        // 实时预览
+        var previewBox = panel.querySelector('#cfg-preview-box');
+        function renderPreview() {
+            previewBox.innerHTML = '';
+            var s = parseInt(panel.querySelector('#cfg-size').value, 10) || 240;
+            var fg = panel.querySelector('#cfg-fg').value;
+            var bg = panel.querySelector('#cfg-bg').value;
+            var mg = Math.max(0, Math.min(40, parseInt(panel.querySelector('#cfg-margin').value, 10) || 0));
+            var rd = Math.max(0, Math.min(24, parseInt(panel.querySelector('#cfg-radius').value, 10) || 0));
+            // 临时用当前面板内的预览配置生成
+            var oldEC = CONFIG.qrECLevel;
+            CONFIG.qrECLevel = panel.querySelector('#cfg-ec').value;
+            var oldMargin = CONFIG.qrMargin, oldRadius = CONFIG.qrBorderRadius;
+            CONFIG.qrMargin = mg; CONFIG.qrBorderRadius = rd;
+            previewBox.style.setProperty('--qr-margin', mg + 'px');
+            previewBox.style.setProperty('--qr-radius', rd + 'px');
+            try {
+                var c = generateQRCanvas('https://example.com 预览', Math.min(s, 180), fg, bg);
+                var wrap = document.createElement('div');
+                wrap.className = 'qr-canvas';
+                wrap.style.setProperty('--qr-margin', mg + 'px');
+                wrap.style.setProperty('--qr-radius', rd + 'px');
+                wrap.appendChild(c);
+                previewBox.appendChild(wrap);
+            } catch (e) { previewBox.textContent = '预览生成失败'; }
+            CONFIG.qrECLevel = oldEC;
+            CONFIG.qrMargin = oldMargin; CONFIG.qrBorderRadius = oldRadius;
+        }
+        ['input', 'change'].forEach(function (ev) {
+            panel.querySelector('#cfg-size').addEventListener(ev, renderPreview);
+            panel.querySelector('#cfg-fg').addEventListener(ev, renderPreview);
+            panel.querySelector('#cfg-bg').addEventListener(ev, renderPreview);
+            panel.querySelector('#cfg-margin').addEventListener(ev, renderPreview);
+            panel.querySelector('#cfg-radius').addEventListener(ev, renderPreview);
+            panel.querySelector('#cfg-ec').addEventListener(ev, renderPreview);
+        });
+        panel.querySelector('#cfg-theme').addEventListener('change', function () {
+            // 主题实时预览：改面板 data-theme
+            var v = panel.querySelector('#cfg-theme').value;
+            if (v === 'dark') panel.setAttribute('data-theme', 'dark');
+            else if (v === 'light') panel.setAttribute('data-theme', 'light');
+            else panel.setAttribute('data-theme', isDarkTheme() ? 'dark' : 'light');
+        });
+        renderPreview();
 
         // 渲染历史列表（设置面板内可浏览与删除）
         var histList = panel.querySelector('#cfg-hist-list');
@@ -662,6 +853,7 @@
             CONFIG.bgColor = panel.querySelector('#cfg-bg').value;
             CONFIG.qrMargin = Math.max(0, Math.min(40, parseInt(panel.querySelector('#cfg-margin').value, 10) || 0));
             CONFIG.qrBorderRadius = Math.max(0, Math.min(24, parseInt(panel.querySelector('#cfg-radius').value, 10) || 0));
+            CONFIG.qrECLevel = panel.querySelector('#cfg-ec').value || 'M';
             CONFIG.theme = panel.querySelector('#cfg-theme').value;
             CONFIG.whitelistMode = panel.querySelector('#cfg-wlmode').checked;
             CONFIG.whitelist = panel.querySelector('#cfg-wl').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
@@ -821,6 +1013,7 @@
         });
         GM_registerMenuCommand('\u2705 多选链接生成二维码', startMultiSelect);
         GM_registerMenuCommand('\uD83D\uDD0D 解析二维码图片', showDecodeQR);
+        GM_registerMenuCommand('\uD83D\uDD0E 识别当前页二维码', scanPageQRCodes);
         GM_registerMenuCommand('\u2699\uFE0F 设置', showSettings);
         GM_registerMenuCommand('\uD83D\uDDD1\uFE0F 清空历史', function () {
             CONFIG.history = [];
