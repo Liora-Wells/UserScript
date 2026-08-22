@@ -8,6 +8,7 @@
 |---|---|---|---|
 |  | [**GitHub 助手**](./github-helper.user.js) | GitHub Release 增强显示 + 多类型加速下载（Clone / SSH / Raw / ZIP），兼容中文化插件 | [**Greasy Fork**](https://update.greasyfork.org/scripts/587965/GitHub%20%E5%8A%A9%E6%89%8B.user.js) \| [**GitHub Raw**](https://github.com/Liora-Wells/UserScript/raw/main/github-helper.user.js) |
 |  | [**发送到Aria2下载**](./send-to-aria2.user.js) | 右键/弹窗将链接发送到本地/远程 Aria2 下载，支持多服务器、批量、磁力、重命名、请求头、代理、任务历史、状态查询 | [**Greasy Fork**](https://update.greasyfork.org/scripts/588936/%E5%8F%91%E9%80%81%E5%88%B0Aria2%E4%B8%8B%E8%BD%BD.user.js) \| [**GitHub Raw**](https://github.com/Liora-Wells/UserScript/raw/main/send-to-aria2.user.js) |
+|  | [**二维码生成器**](./qrcode-generator.user.js) | 右键/快捷键将当前页、选中文本、链接生成二维码，支持批量/多选、解析图片及页面中的二维码、黑白名单、历史记录 | [**Greasy Fork**](https://update.greasyfork.org/scripts/592437/%E4%BA%8C%E7%BB%B4%E7%A0%81%E7%94%9F%E6%88%90%E5%99%A8.user.js) \| [**GitHub Raw**](https://github.com/Liora-Wells/UserScript/raw/main/qrcode-generator.user.js) |
 
 > **Note**
 > *脚本列表会随心补充，可能时多时少~*
