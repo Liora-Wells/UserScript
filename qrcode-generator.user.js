@@ -203,7 +203,10 @@
         .qr-settings-preview canvas{max-width:100%;background:#fff;border-radius:8px;padding:6px;box-sizing:border-box}
         .qr-settings-preview-label{font-size:11px;color:var(--qr-muted)}
         .qr-row{display:flex;gap:10px;align-items:center;margin:6px 0;flex-wrap:wrap}
-        .qr-row input[type="color"]{width:36px;height:28px;border:1px solid var(--qr-border);border-radius:6px;cursor:pointer;padding:0;background:transparent}
+        .qr-row input[type="color"]{-webkit-appearance:none;appearance:none;width:40px;height:28px;border:1px solid var(--qr-border);border-radius:6px;cursor:pointer;padding:0;background:var(--qr-input-bg)}
+        .qr-row input[type="color"]::-webkit-color-swatch-wrapper{padding:2px}
+        .qr-row input[type="color"]::-webkit-color-swatch{border:none;border-radius:4px}
+        .qr-row input[type="color"]::-moz-color-swatch{border:none;border-radius:4px}
         .qr-row input[type="number"], .qr-row select{padding:6px 8px;border:1px solid var(--qr-input-border);background:var(--qr-input-bg);color:var(--qr-text);border-radius:8px;font-size:12px;outline:none}
         .qr-row input[type="number"]{width:76px}
         .qr-row select{flex:1}
@@ -733,12 +736,12 @@
             + '<div class="qr-title"><span>\u2699\uFE0F QR Code 设置</span><span class="qr-close">\u2715</span></div>'
             + '<div class="qr-warning">\u26A0\uFE0F 修改黑白名单后需<strong>刷新页面</strong>生效（自动注入部分）；菜单命令始终可用</div>'
             + '<h3>\uD83C\uDFA8 样式</h3>'
-            + '<div class="qr-row"><label>尺寸:</label><input type="number" id="cfg-size" value="' + CONFIG.size + '" min="100" max="600">'
-            + ' <label>前景:</label><input type="color" id="cfg-fg" value="' + CONFIG.fgColor + '">'
-            + ' <label>背景:</label><input type="color" id="cfg-bg" value="' + CONFIG.bgColor + '"></div>'
-            + '<div class="qr-row"><label>内边距:</label><input type="number" id="cfg-margin" value="' + CONFIG.qrMargin + '" min="0" max="40" style="width:80px"> px'
-            + ' <label>圆角:</label><input type="number" id="cfg-radius" value="' + CONFIG.qrBorderRadius + '" min="0" max="24" style="width:80px"> px'
-            + ' <label>容错:</label><select id="cfg-ec" style="width:92px"><option value="L"' + (CONFIG.qrECLevel==='L'?' selected':'') + '>L 低</option><option value="M"' + (CONFIG.qrECLevel==='M'?' selected':'') + '>M 中</option><option value="Q"' + (CONFIG.qrECLevel==='Q'?' selected':'') + '>Q 高</option><option value="H"' + (CONFIG.qrECLevel==='H'?' selected':'') + '>H 最高</option></select></div>'
+            + '<div class="qr-row"><label>尺寸:</label><input type="number" id="cfg-size" class="cfg-live" value="' + CONFIG.size + '" min="100" max="600">'
+            + ' <label>前景:</label><input type="color" id="cfg-fg" class="cfg-live" value="' + CONFIG.fgColor + '">'
+            + ' <label>背景:</label><input type="color" id="cfg-bg" class="cfg-live" value="' + CONFIG.bgColor + '"></div>'
+            + '<div class="qr-row"><label>内边距:</label><input type="number" id="cfg-margin" class="cfg-live" value="' + CONFIG.qrMargin + '" min="0" max="40" style="width:80px"> px'
+            + ' <label>圆角:</label><input type="number" id="cfg-radius" class="cfg-live" value="' + CONFIG.qrBorderRadius + '" min="0" max="24" style="width:80px"> px'
+            + ' <label>容错:</label><select id="cfg-ec" class="cfg-live" style="width:92px"><option value="L"' + (CONFIG.qrECLevel==='L'?' selected':'') + '>L 低</option><option value="M"' + (CONFIG.qrECLevel==='M'?' selected':'') + '>M 中</option><option value="Q"' + (CONFIG.qrECLevel==='Q'?' selected':'') + '>Q 高</option><option value="H"' + (CONFIG.qrECLevel==='H'?' selected':'') + '>H 最高</option></select></div>'
             + '<div class="qr-tip">内边距/圆角仅影响容器留白，不改变二维码本身颜色，深色主题下也能正常解析；容错越高越易被遮挡/污损后识别</div>'
             + '<div class="qr-settings-preview"><div class="qr-settings-preview-label">实时预览</div><div id="cfg-preview-box"></div></div>'
             + '<label>主题:</label><select id="cfg-theme" class="qr-input" style="margin:0">'
@@ -751,7 +754,7 @@
             + '<label>白名单（每行一个，支持 *.example.com）：</label><textarea id="cfg-wl" placeholder="example.com\n*.github.com">' + escapeHtml(CONFIG.whitelist.join('\n')) + '</textarea>'
             + '<label>黑名单（每行一个）：</label><textarea id="cfg-bl" placeholder="adsite.com">' + escapeHtml(CONFIG.blacklist.join('\n')) + '</textarea>'
             + '<h3>\uD83D\uDCE6 批量生成</h3><div class="qr-row"><label>最大显示数量:</label><input type="number" id="cfg-maxbatch" value="' + CONFIG.maxBatch + '" min="1" max="20"></div>'
-            + '<h3>\uD83D\uDCDC 历史</h3><div id="cfg-hist-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--qr-input-border);border-radius:6px;padding:6px;background:var(--qr-input-bg);margin-bottom:6px"></div><div class="qr-row"><button class="qr-btn ghost" id="cfg-clearhist">清空历史</button><span class="qr-tip">当前 ' + CONFIG.history.length + ' 条</span></div>'
+            + '<h3>\uD83D\uDCDC 历史</h3><div id="cfg-hist-list" style="max-height:160px;overflow-y:auto;border:1px solid var(--qr-input-border);border-radius:6px;padding:6px;background:var(--qr-input-bg);margin-bottom:6px"></div><div class="qr-row"><button class="qr-btn ghost" id="cfg-clearhist">清空历史</button><span class="qr-tip" id="cfg-hist-count">当前 ' + CONFIG.history.length + ' 条</span></div>'
             + '<label style="margin-top:10px"><input type="checkbox" id="cfg-debug"' + (CONFIG.debug?' checked':'') + '> 调试日志（控制台 [QR] 前缀）</label>'
             + '<div class="qr-btns" style="margin-top:15px"><button class="qr-btn" id="cfg-save">\uD83D\uDCBE 保存</button><button class="qr-btn secondary" id="cfg-cancel">取消</button></div>';
 
@@ -766,20 +769,20 @@
         // 实时预览
         var previewBox = panel.querySelector('#cfg-preview-box');
         function renderPreview() {
-            previewBox.innerHTML = '';
-            var s = parseInt(panel.querySelector('#cfg-size').value, 10) || 240;
-            var fg = panel.querySelector('#cfg-fg').value;
-            var bg = panel.querySelector('#cfg-bg').value;
-            var mg = Math.max(0, Math.min(40, parseInt(panel.querySelector('#cfg-margin').value, 10) || 0));
-            var rd = Math.max(0, Math.min(24, parseInt(panel.querySelector('#cfg-radius').value, 10) || 0));
-            // 临时用当前面板内的预览配置生成
-            var oldEC = CONFIG.qrECLevel;
-            CONFIG.qrECLevel = panel.querySelector('#cfg-ec').value;
-            var oldMargin = CONFIG.qrMargin, oldRadius = CONFIG.qrBorderRadius;
-            CONFIG.qrMargin = mg; CONFIG.qrBorderRadius = rd;
-            previewBox.style.setProperty('--qr-margin', mg + 'px');
-            previewBox.style.setProperty('--qr-radius', rd + 'px');
             try {
+                previewBox.innerHTML = '';
+                var s = parseInt(panel.querySelector('#cfg-size').value, 10) || 240;
+                var fgEl = panel.querySelector('#cfg-fg');
+                var bgEl = panel.querySelector('#cfg-bg');
+                var fg = fgEl && fgEl.value ? fgEl.value : CONFIG.fgColor;
+                var bg = bgEl && bgEl.value ? bgEl.value : CONFIG.bgColor;
+                var mg = Math.max(0, Math.min(40, parseInt(panel.querySelector('#cfg-margin').value, 10) || 0));
+                var rd = Math.max(0, Math.min(24, parseInt(panel.querySelector('#cfg-radius').value, 10) || 0));
+                // 临时用当前面板内的预览配置生成
+                var oldEC = CONFIG.qrECLevel;
+                CONFIG.qrECLevel = panel.querySelector('#cfg-ec').value;
+                previewBox.style.setProperty('--qr-margin', mg + 'px');
+                previewBox.style.setProperty('--qr-radius', rd + 'px');
                 var c = generateQRCanvas('https://example.com 预览', Math.min(s, 180), fg, bg);
                 var wrap = document.createElement('div');
                 wrap.className = 'qr-canvas';
@@ -787,17 +790,15 @@
                 wrap.style.setProperty('--qr-radius', rd + 'px');
                 wrap.appendChild(c);
                 previewBox.appendChild(wrap);
-            } catch (e) { previewBox.textContent = '预览生成失败'; }
-            CONFIG.qrECLevel = oldEC;
-            CONFIG.qrMargin = oldMargin; CONFIG.qrBorderRadius = oldRadius;
+                CONFIG.qrECLevel = oldEC;
+            } catch (e) {
+                errLog('预览失败', e);
+                previewBox.textContent = '预览生成失败';
+            }
         }
-        ['input', 'change'].forEach(function (ev) {
-            panel.querySelector('#cfg-size').addEventListener(ev, renderPreview);
-            panel.querySelector('#cfg-fg').addEventListener(ev, renderPreview);
-            panel.querySelector('#cfg-bg').addEventListener(ev, renderPreview);
-            panel.querySelector('#cfg-margin').addEventListener(ev, renderPreview);
-            panel.querySelector('#cfg-radius').addEventListener(ev, renderPreview);
-            panel.querySelector('#cfg-ec').addEventListener(ev, renderPreview);
+        panel.querySelectorAll('.cfg-live').forEach(function (el) {
+            el.addEventListener('input', renderPreview);
+            el.addEventListener('change', renderPreview);
         });
         panel.querySelector('#cfg-theme').addEventListener('change', function () {
             // 主题实时预览：改面板 data-theme
@@ -832,7 +833,8 @@
                 del.onclick = function () {
                     removeHistory(h);
                     renderHistList();
-                    panel.querySelector('.qr-tip').textContent = '当前 ' + CONFIG.history.length + ' 条';
+                    var cnt = panel.querySelector('#cfg-hist-count');
+                    if (cnt) cnt.textContent = '当前 ' + CONFIG.history.length + ' 条';
                 };
                 row.appendChild(txt); row.appendChild(del);
                 histList.appendChild(row);
@@ -845,7 +847,8 @@
             saveConfig();
             toast('历史已清空', 'success');
             renderHistList();
-            panel.querySelector('.qr-tip').textContent = '当前 0 条';
+            var cnt = panel.querySelector('#cfg-hist-count');
+            if (cnt) cnt.textContent = '当前 0 条';
         };
         panel.querySelector('#cfg-save').onclick = function () {
             CONFIG.size = parseInt(panel.querySelector('#cfg-size').value, 10) || 240;
