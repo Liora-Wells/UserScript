@@ -32,6 +32,10 @@
     const WARN = (...args) => { if (DEBUG) console.warn('[GH助手]', ...args); };
     const ERR = (...args) => { if (DEBUG) console.error('[GH助手]', ...args); };
 
+    // HTML 转义唯一实现（防止 innerHTML 拼接被解析为标签/属性注入）
+    // 所有把用户/页面/存储可控内容拼进 HTML 的地方都应调用此函数
+    const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
     // 延迟非关键 DOM 操作到下一事件循环（setTimeout 保证跨 VM/TM 沙箱最终执行）
     const runIdle = (fn) => {
         setTimeout(fn, 0);
@@ -115,6 +119,12 @@
             if (this._cache[key] !== undefined) return this._cache[key];
             if (typeof GM_getValue === 'undefined') return defaultValue;
             const val = GM_getValue(key, defaultValue);
+            // Violentmonkey 的 GM_getValue 返回 Promise：不缓存 Promise 本身，
+            // 先返回默认值，异步刷新缓存；同步可读时直接缓存
+            if (val && typeof val.then === 'function') {
+                val.then(v => { this._cache[key] = v; }).catch(() => { /* 读失败保留默认值 */ });
+                return defaultValue;
+            }
             this._cache[key] = val;
             return val;
         },
@@ -122,8 +132,26 @@
         set(key, value) {
             this._cache[key] = value;
             if (typeof GM_setValue !== 'undefined') {
-                GM_setValue(key, value);
+                // VM 的 GM_setValue 返回 Promise，异步落盘；加 .catch 避免 unhandled rejection
+                const ret = GM_setValue(key, value);
+                if (ret && typeof ret.then === 'function') ret.catch(() => { /* 写失败静默 */ });
             }
+        },
+
+        // 首次启动时异步预热缓存（Violentmonkey 下 GM_getValue 是异步的，需等落盘值读到缓存）
+        // 调用方（init）应在解析/渲染前 await 此方法
+        warmup() {
+            const keys = Object.values(STORAGE_KEYS);
+            const tasks = keys.map(key => {
+                if (typeof GM_getValue === 'undefined') return Promise.resolve(null);
+                const val = GM_getValue(key, undefined);
+                if (val && typeof val.then === 'function') {
+                    return val.then(v => { if (v !== undefined) this._cache[key] = v; }).catch(() => {});
+                }
+                this._cache[key] = val;
+                return Promise.resolve(null);
+            });
+            return Promise.all(tasks);
         },
 
         getFeatures() {
@@ -250,19 +278,29 @@
 
         // 原始读写：绕过业务方法，直接操作 GM_*，同步 _cache（供 ConfigBackup 使用）
         _getRaw(key) {
+            // 优先读缓存（warmup/set 已同步）；VM 异步 GM_getValue 不缓存 Promise
+            if (this._cache[key] !== undefined) return this._cache[key];
             if (typeof GM_getValue === 'undefined') return null;
-            return GM_getValue(key, null);
+            const val = GM_getValue(key, null);
+            if (val && typeof val.then === 'function') {
+                val.then(v => { if (v !== undefined) this._cache[key] = v; }).catch(() => {});
+                return null;
+            }
+            this._cache[key] = val;
+            return val;
         },
         _setRaw(key, value) {
             this._cache[key] = value;
             if (typeof GM_setValue !== 'undefined') {
-                GM_setValue(key, value);
+                const ret = GM_setValue(key, value);
+                if (ret && typeof ret.then === 'function') ret.catch(() => { /* 写失败静默 */ });
             }
         },
         _deleteRaw(key) {
             delete this._cache[key];
             if (typeof GM_deleteValue !== 'undefined') {
-                GM_deleteValue(key);
+                const ret = GM_deleteValue(key);
+                if (ret && typeof ret.then === 'function') ret.catch(() => { /* 删除失败静默 */ });
             }
         }
     };
@@ -457,6 +495,27 @@
         CONFIG_VERSION: 1,
         SCRIPT_NAME: 'github-helper',
 
+        // 每个已知存储键的期望类型/结构校验器（导入时防止坏值导致运行时崩溃）
+        _validators: {
+            ghhelper_proxies: (v) => Array.isArray(v) && v.every(p => p && typeof p === 'object' && typeof p.id === 'string' && typeof p.name === 'string' && typeof p.url === 'string'),
+            ghhelper_deleted_builtin_ids: (v) => Array.isArray(v) && v.every(x => typeof x === 'string'),
+            ghhelper_features: (v) => v && typeof v === 'object' && !Array.isArray(v),
+            ghhelper_max_display: (v) => typeof v === 'number' && isFinite(v),
+            ghhelper_selected_os: (v) => v === null || typeof v === 'string',
+            ghhelper_selected_arch: (v) => v === null || typeof v === 'string',
+            ghhelper_proxy_groups_collapsed: (v) => v && typeof v === 'object' && !Array.isArray(v),
+            ghhelper_default_raw_proxy_id: (v) => v === null || typeof v === 'string',
+            ghhelper_debug: (v) => typeof v === 'boolean'
+        },
+
+        // 校验单个存储键的值是否符合期望结构；未知键/无校验器则视为无效
+        _isValidValue(key, value) {
+            const validator = this._validators[key];
+            if (!validator) return false;
+            try { return validator(value); }
+            catch (e) { return false; }
+        },
+
         // 导出：返回 JSON 字符串
         export() {
             const data = {};
@@ -542,13 +601,19 @@
         apply(payload, mode, manualKeys) {
             const keysToWrite = this._resolveKeys(mode, manualKeys);
             let written = 0;
+            let invalid = 0;
             keysToWrite.forEach(key => {
                 if (payload.data[key] !== undefined) {
+                    // 按 schema 校验类型，坏值跳过以免污染存储导致后续崩溃
+                    if (!this._isValidValue(key, payload.data[key])) {
+                        invalid++;
+                        return;
+                    }
                     StorageManager._setRaw(key, payload.data[key]);
                     written++;
                 }
             });
-            return written;
+            return { written, invalid };
         },
 
         // 重置全部为默认（首次安装状态）
@@ -1192,7 +1257,10 @@
                         url: apiUrl,
                         headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'GitHub-Helper/1.1' },
                         onload: (r) => {
-                            if (r.status === 200) resolve(JSON.parse(r.responseText));
+                            if (r.status === 200) {
+                                try { resolve(JSON.parse(r.responseText)); }
+                                catch (e) { reject('响应格式异常: ' + (e?.message || 'JSON 解析失败')); }
+                            }
                             else reject(`API ${r.status}`);
                         },
                         onerror: (e) => reject('网络错误: ' + (e?.message || '未知'))
@@ -1330,9 +1398,13 @@
                         btn.innerHTML = '<span class="Button-content"><span class="Button-label">刷新下载量</span></span>';
                         btn.disabled = false;
                         busy = false;
-                    }).catch(() => {
+                    }).catch((err) => {
                         if (!document.contains(btn)) { busy = false; return; }
-                        btn.innerHTML = '<span class="Button-content"><span class="Button-label color-fg-danger">获取失败(限流)</span></span>';
+                        const msg = typeof err === 'string' ? err : (err?.message || '未知错误');
+                        const label = /API\s*403|限流|rate.?limit/i.test(msg)
+                            ? '获取失败(限流)'
+                            : ('获取失败(' + (msg.slice(0, 18) || '错误') + ')');
+                        btn.innerHTML = '<span class="Button-content"><span class="Button-label color-fg-danger">' + label + '</span></span>';
                         btn.disabled = false;
                         busy = false;
                     });
@@ -1708,7 +1780,7 @@
                     dd.setAttribute('data-ghhelper-nt', '1');
                     const db = document.createElement('a');
                     db.className = 'ghhelper-proxy-btn'; db.textContent = '加速 ▼';
-                    db.href = 'javascript:void(0)';
+                    db.href = '#';
                     db.setAttribute('data-ghhelper-nt', '1');
                     const dm = document.createElement('div');
                     dm.className = 'ghhelper-proxy-dropdown-menu';
@@ -1807,7 +1879,7 @@
                 dropA = dropdownLi.querySelector('a[href$=".zip"]');
                 const dropS = dropdownLi.querySelector('span[id]');
                 if (dropA && dropS) {
-                    dropA.href = 'javascript:void(0)';
+                    dropA.href = '#';
                     dropA.removeAttribute('target');
                     dropA.removeAttribute('rel');
                     dropA.style.cursor = 'pointer';
@@ -2084,7 +2156,7 @@
                 const db = document.createElement('a');
                 db.className = 'ghhelper-proxy-btn';
                 db.textContent = '更多 ▼';
-                db.href = 'javascript:void(0)';
+                db.href = '#';
                 db.setAttribute('data-ghhelper-nt', '1');
                 db.style.cursor = 'pointer';
 
@@ -2094,7 +2166,7 @@
                     const url = ProxyManager.buildUrl(p, href_split, 'clone');
                     const lk = document.createElement('a');
                     lk.className = 'ghhelper-proxy-menu-item';
-                    lk.href = 'javascript:void(0)';
+                    lk.href = '#';
                     lk.setAttribute('data-ghhelper-nt', '1');
                     lk.textContent = p.name;
                     lk.title = url + '\n\n点击复制：git clone ' + url;
@@ -2130,6 +2202,7 @@
                     }
                     // 下拉菜单项：点击复制 dataset.ghhelperCloneUrl
                     if (e.target.tagName === 'A' && e.target.dataset.ghhelperCloneUrl) {
+                        e.preventDefault();
                         GM_setClipboard(e.target.dataset.ghhelperCloneUrl);
                         // 复制后关闭菜单
                         document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => el.classList.remove('ghhelper-dropdown-open'));
@@ -2247,7 +2320,7 @@
                 const db = document.createElement('a');
                 db.className = 'ghhelper-proxy-btn';
                 db.textContent = '更多 ▼';
-                db.href = 'javascript:void(0)';
+                db.href = '#';
                 db.setAttribute('data-ghhelper-nt', '1');
                 db.style.cursor = 'pointer';
 
@@ -2257,7 +2330,7 @@
                     const url = ProxyManager.buildUrl(p, href_split, 'ssh');
                     const lk = document.createElement('a');
                     lk.className = 'ghhelper-proxy-menu-item';
-                    lk.href = 'javascript:void(0)';
+                    lk.href = '#';
                     lk.setAttribute('data-ghhelper-nt', '1');
                     lk.textContent = p.name;
                     lk.title = url + '\n\n点击复制：git clone ' + url;
@@ -2293,6 +2366,7 @@
                     }
                     // 下拉菜单项：点击复制 dataset.ghhelperSshUrl
                     if (e.target.tagName === 'A' && e.target.dataset.ghhelperSshUrl) {
+                        e.preventDefault();
                         GM_setClipboard(e.target.dataset.ghhelperSshUrl);
                         // 复制后关闭菜单
                         document.querySelectorAll('.ghhelper-dropdown-open').forEach(el => el.classList.remove('ghhelper-dropdown-open'));
@@ -2434,12 +2508,17 @@
                 const href = cntElm_a.getAttribute('href');
                 const url = ProxyManager.buildUrl(proxy, href, 'raw');
 
-                fileElm.insertAdjacentHTML('afterend',
-                    '<a href="' + url + '" data-filename="' + Name + '" class="fileDownLink ghhelper-file-down-link" '
-                    + 'data-ghhelper-element="1" data-ghhelper-nt="1" style="display:none" '
-                    + 'title="「' + proxy.name + '」&#10;&#10;[Alt + 左键] 或 [右键 - 另存为...] 下载文件。&#10;注意：鼠标点击 [☁] 图标，而不是左侧的文件名！&#10;&#10;' + (proxy.desc || '') + '&#10;&#10;提示：在设置面板 - 加速源管理，可设为默认加速源。">'
-                    + SVG_CLOUD + '</a>'
-                );
+                // 用 createElement + setAttribute/textContent 构建，避免文件名/代理名等第三方可控内容注入 HTML（XSS）
+                const cloudA = document.createElement('a');
+                cloudA.href = url;
+                cloudA.setAttribute('data-filename', Name);
+                cloudA.className = 'fileDownLink ghhelper-file-down-link';
+                cloudA.setAttribute('data-ghhelper-element', '1');
+                cloudA.setAttribute('data-ghhelper-nt', '1');
+                cloudA.style.display = 'none';
+                cloudA.title = '「' + proxy.name + '」\n\n[Alt + 左键] 或 [右键 - 另存为...] 下载文件。\n注意：鼠标点击 [☁] 图标，而不是左侧的文件名！\n\n' + (proxy.desc || '') + '\n\n提示：在设置面板 - 加速源管理，可设为默认加速源。';
+                cloudA.innerHTML = SVG_CLOUD;
+                fileElm.insertAdjacentElement('afterend', cloudA);
 
                 trElm.onmouseover = mouseOverHandler;
                 trElm.onmouseout = mouseOutHandler;
@@ -2462,12 +2541,17 @@
             const href = cntElm_a.getAttribute('href');
             const url = ProxyManager.buildUrl(proxy, href, 'raw');
 
-            fileElm.insertAdjacentHTML('afterend',
-                '<a href="' + url + '" data-filename="' + Name + '" class="fileDownLink ghhelper-file-down-link" '
-                + 'data-ghhelper-element="1" data-ghhelper-nt="1" style="display:none" '
-                + 'title="「' + proxy.name + '」&#10;&#10;' + (proxy.desc || '') + '">'
-                + SVG_CLOUD + '</a>'
-            );
+            // 用 createElement + setAttribute/textContent 构建，避免文件名/代理名等第三方可控内容注入 HTML（XSS）
+            const cloudA = document.createElement('a');
+            cloudA.href = url;
+            cloudA.setAttribute('data-filename', Name);
+            cloudA.className = 'fileDownLink ghhelper-file-down-link';
+            cloudA.setAttribute('data-ghhelper-element', '1');
+            cloudA.setAttribute('data-ghhelper-nt', '1');
+            cloudA.style.display = 'none';
+            cloudA.title = '「' + proxy.name + '」\n\n' + (proxy.desc || '');
+            cloudA.innerHTML = SVG_CLOUD;
+            fileElm.insertAdjacentElement('afterend', cloudA);
             const cloudLink = trElm.querySelector('a.fileDownLink');
             if (cloudLink) cloudLink.addEventListener('click', DOMRenderer._onCloudClick);
         },
@@ -2565,8 +2649,7 @@
         },
 
         processReleaseNotes() {
-            // HTML 转义辅助，避免 innerHTML 拼接时被解析为标签
-            const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            // HTML 转义使用模块级 escapeHtml（避免 innerHTML 拼接被解析为标签/属性注入）
 
             document.querySelectorAll('.markdown-body.tmp-my-3:not([data-ghhelper-notes-processed])').forEach(el => {
                 el.setAttribute('data-ghhelper-notes-processed', '1');
@@ -2844,7 +2927,7 @@
         },
 
         _escapeHtml(s) {
-            return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            return escapeHtml(s);
         },
 
         renderProxyTab(body) {
@@ -3153,8 +3236,8 @@
                 html += '<span class="ghhelper-proxy-modified" data-ghhelper-nt="1">已修改</span>';
             }
             html += '<div class="ghhelper-proxy-tags" data-ghhelper-nt="1">';
-            html += '<span class="ghhelper-proxy-tag" data-ghhelper-nt="1">[' + typeLabel + ']</span>';
-            html += '<span class="ghhelper-proxy-tag ' + sourceClass + '" data-ghhelper-nt="1">[' + sourceLabel + ']</span>';
+            html += '<span class="ghhelper-proxy-tag" data-ghhelper-nt="1">[' + this._escapeHtml(typeLabel) + ']</span>';
+            html += '<span class="ghhelper-proxy-tag ' + sourceClass + '" data-ghhelper-nt="1">[' + this._escapeHtml(sourceLabel) + ']</span>';
             if (p.region) {
                 html += '<span class="ghhelper-proxy-tag" data-ghhelper-nt="1">' + this._escapeHtml(p.region) + '</span>';
             }
@@ -3658,7 +3741,9 @@
             if (!confirm('将覆盖当前配置（合并方式：' + modeNames[mode] + '），确认？')) return;
 
             // 执行写入
-            const written = ConfigBackup.apply(payload, mode, manualKeys);
+            const result = ConfigBackup.apply(payload, mode, manualKeys);
+            const written = result.written;
+            const invalid = result.invalid || 0;
 
             // 刷新页面加速按钮
             DOMRenderer.reprocessAll();
@@ -3666,7 +3751,8 @@
             // 重渲 backup Tab（保持 Tab 选中状态）
             this.renderTab('backup');
 
-            Toast.success('已导入配置（覆盖 ' + written + ' 项）');
+            const msg = '已导入配置（覆盖 ' + written + ' 项）' + (invalid ? '，跳过 ' + invalid + ' 项非法数据' : '');
+            Toast.success(msg);
         },
 
         // 执行重置
@@ -3921,19 +4007,23 @@
     const ROUTE_RETRY_DELAY = 300;
 
     function init() {
-        try {
-            // 从持久化配置加载调试日志开关（默认关闭）
-            DEBUG = StorageManager.isDebugEnabled();
-            // 清理上一轮的 timer，避免 urlchange 频繁触发时堆积
-            if (_routeTimer) { clearTimeout(_routeTimer); _routeTimer = null; }
-            oneTimeSetup();
-            updatePathCache(); // 更新路径分流缓存，供全局 observer 使用
-            routeByPathname();
-            _routeRetryCount = 0;
-            _scheduleRouteRetry();
-        } catch (e) {
-            LOG('init 异常:', e.message);
-        }
+        // 先预热存储缓存（Violentmonkey 的 GM_getValue 是异步的；TM 同步环境立即完成）
+        // 保证后续同步读取能拿到真实持久化值，避免 VM 下配置/功能开关"读取不到"
+        StorageManager.warmup().then(() => {
+            try {
+                // 从持久化配置加载调试日志开关（默认关闭）
+                DEBUG = StorageManager.isDebugEnabled();
+                // 清理上一轮的 timer，避免 urlchange 频繁触发时堆积
+                if (_routeTimer) { clearTimeout(_routeTimer); _routeTimer = null; }
+                oneTimeSetup();
+                updatePathCache(); // 更新路径分流缓存，供全局 observer 使用
+                routeByPathname();
+                _routeRetryCount = 0;
+                _scheduleRouteRetry();
+            } catch (e) {
+                LOG('init 异常:', e.message);
+            }
+        });
     }
 
     // 优化：使用短间隔渐进重试，检测到关键元素后提前退出
