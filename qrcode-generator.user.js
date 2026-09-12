@@ -111,7 +111,8 @@
         if (typeof cfg.qrMargin !== 'number') cfg.qrMargin = DEFAULT_CONFIG.qrMargin;
         if (typeof cfg.qrBorderRadius !== 'number') cfg.qrBorderRadius = DEFAULT_CONFIG.qrBorderRadius;
         if (typeof cfg.qrECLevel !== 'string') cfg.qrECLevel = DEFAULT_CONFIG.qrECLevel;
-        if (typeof cfg.maxHistory !== 'number' || cfg.maxHistory > 10) cfg.maxHistory = DEFAULT_CONFIG.maxHistory;
+        if (typeof cfg.maxHistory !== 'number' || !isFinite(cfg.maxHistory)) cfg.maxHistory = DEFAULT_CONFIG.maxHistory;
+        cfg.maxHistory = Math.max(1, Math.min(10, Math.floor(cfg.maxHistory)));
         if (typeof cfg.maxBatch !== 'number') cfg.maxBatch = DEFAULT_CONFIG.maxBatch;
         return cfg;
     }
@@ -123,13 +124,12 @@
 
     function shouldRun() {
         var host = location.hostname;
-        var url = location.href;
         function matchPattern(pattern) {
             pattern = pattern.trim();
             if (!pattern) return false;
             if (pattern.indexOf('*.') === 0) return host.endsWith(pattern.slice(1));
             if (host === pattern) return true;
-            if (url.indexOf(pattern) !== -1) return true;
+            if (host.endsWith('.' + pattern)) return true;
             return false;
         }
         function matchList(list) { return list.some(matchPattern); }
@@ -240,10 +240,6 @@
             setTimeout(function () { if (el.parentNode) el.remove(); }, 300);
         }, 2000);
     }
-    function notifyUser(msg) {
-        if (!notifySystem(msg)) toast(msg, 'info');
-        else toast(msg, 'info');
-    }
 
     // ========== QR 核心 ==========
     // 深色主题仅影响面板 chrome，码体始终用纯净背景，避免影响识别
@@ -251,6 +247,7 @@
         return { fg: CONFIG.fgColor, bg: CONFIG.bgColor };
     }
     function generateQRCanvas(text, size, fgColor, bgColor) {
+        if (typeof qrcode === 'undefined') { toast('二维码库加载失败，请检查网络或刷新', 'error'); throw new Error('QR_LIB'); }
         if (!text || !text.trim()) throw new Error('EMPTY');
         if (fgColor === undefined || bgColor === undefined) {
             var c = getQRColors(); fgColor = c.fg; bgColor = c.bg;
@@ -279,6 +276,7 @@
     }
 
     function generateQRSvg(text, size) {
+        if (typeof qrcode === 'undefined') { toast('二维码库加载失败，请检查网络或刷新', 'error'); throw new Error('QR_LIB'); }
         if (!text || !text.trim()) throw new Error('EMPTY');
         if (size === undefined) size = CONFIG.size;
         var ec = CONFIG.qrECLevel || 'M';
@@ -291,6 +289,7 @@
     }
 
     function decodeImageFile(file) {
+        if (typeof jsQR === 'undefined') { toast('二维码库加载失败，请检查网络或刷新', 'error'); return; }
         if (!file) { toast('未选择文件', 'error'); return; }
         var reader = new FileReader();
         reader.onload = function (ev) {
@@ -337,6 +336,7 @@
 
     // 识别当前页所有可见图片中的二维码
     function scanPageQRCodes() {
+        if (typeof jsQR === 'undefined') { toast('二维码库加载失败，请检查网络或刷新', 'error'); return; }
         var imgs = Array.from(document.querySelectorAll('img'));
         // 同域 canvas 截图兜底：若页内无可解图片，会提示
         if (imgs.length === 0) { toast('当前页没有图片可识别', 'error'); return; }
@@ -631,8 +631,11 @@
                 } else if (act === 'dlpng') {
                     if (!currentQR.canvas) { toast('没有可下载的图片', 'error'); return; }
                     var name = 'qr-' + (currentQR.text.slice(0, 8).replace(/[^a-zA-Z0-9]/g, '_') || 'qrcode') + '.png';
-                    downloadBlob(dataURLToBlob(currentQR.canvas.toDataURL('image/png')), name);
-                    toast('已下载 PNG', 'success');
+                    var dlCanvas = currentQR.canvas;
+                    dlCanvas.toBlob(function (blob) {
+                        if (blob) { downloadBlob(blob, name); toast('已下载 PNG', 'success'); }
+                        else toast('下载 PNG 失败', 'error');
+                    }, 'image/png');
                 } else if (act === 'dlsvg') {
                     var val2 = currentQR.text || input.value.trim();
                     if (!val2) { toast('没有可下载的内容', 'error'); return; }
@@ -650,15 +653,6 @@
         });
 
         setTimeout(function () { input.focus(); }, 50);
-    }
-
-    function dataURLToBlob(dataURL) {
-        var parts = dataURL.split(',');
-        var mime = parts[0].match(/:(.*?);/)[1];
-        var bstr = atob(parts[1]);
-        var u8 = new Uint8Array(bstr.length);
-        for (var i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
-        return new Blob([u8], { type: mime });
     }
 
     function showInputPrompt() {
@@ -738,8 +732,8 @@
             + '<div class="qr-warning">\u26A0\uFE0F 修改黑白名单后需<strong>刷新页面</strong>生效（自动注入部分）；菜单命令始终可用</div>'
             + '<h3>\uD83C\uDFA8 样式</h3>'
             + '<div class="qr-row"><label>尺寸:</label><input type="number" id="cfg-size" class="cfg-live" value="' + CONFIG.size + '" min="100" max="600">'
-            + ' <label>前景:</label><input type="color" id="cfg-fg" class="cfg-live" value="' + CONFIG.fgColor + '">'
-            + ' <label>背景:</label><input type="color" id="cfg-bg" class="cfg-live" value="' + CONFIG.bgColor + '"></div>'
+            + ' <label>前景:</label><input type="color" id="cfg-fg" class="cfg-live" value="' + escapeHtml(CONFIG.fgColor) + '">'
+            + ' <label>背景:</label><input type="color" id="cfg-bg" class="cfg-live" value="' + escapeHtml(CONFIG.bgColor) + '"></div>'
             + '<div class="qr-row"><label>内边距:</label><input type="number" id="cfg-margin" class="cfg-live" value="' + CONFIG.qrMargin + '" min="0" max="40" style="width:80px"> px'
             + ' <label>圆角:</label><input type="number" id="cfg-radius" class="cfg-live" value="' + CONFIG.qrBorderRadius + '" min="0" max="24" style="width:80px"> px'
             + ' <label>容错:</label><select id="cfg-ec" class="cfg-live" style="width:92px"><option value="L"' + (CONFIG.qrECLevel==='L'?' selected':'') + '>L 低</option><option value="M"' + (CONFIG.qrECLevel==='M'?' selected':'') + '>M 中</option><option value="Q"' + (CONFIG.qrECLevel==='Q'?' selected':'') + '>Q 高</option><option value="H"' + (CONFIG.qrECLevel==='H'?' selected':'') + '>H 最高</option></select></div>'
@@ -874,7 +868,7 @@
             CONFIG.whitelistMode = panel.querySelector('#cfg-wlmode').checked;
             CONFIG.whitelist = panel.querySelector('#cfg-wl').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
             CONFIG.blacklist = panel.querySelector('#cfg-bl').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
-            CONFIG.maxBatch = parseInt(panel.querySelector('#cfg-maxbatch').value, 10) || 9;
+            CONFIG.maxBatch = parseInt(panel.querySelector('#cfg-maxbatch').value, 10) || DEFAULT_CONFIG.maxBatch;
             CONFIG.debug = panel.querySelector('#cfg-debug').checked;
             DEBUG = !!CONFIG.debug;
             saveConfig();
