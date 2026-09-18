@@ -190,18 +190,33 @@
     // ============================================================
 
     const StorageManager = {
+        // 内存缓存（存放解析后的值）：避免反复读 GM 存储；
+        // Violentmonkey 的 GM_getValue 返回 Promise，无法同步读取，预热后统一走缓存
+        _cache: {},
+
         /**
-         * 同步读取（Tampermonkey 默认同步；VM 也可同步访问）
-         * 兼容 VM 异步返回的 Promise（用 .then 兜底，但同步路径优先）
+         * 读取配置（同步 API，Tampermonkey 直接返回；Violentmonkey 异步返回 Promise）
+         * 同步环境下直接解析返回并写缓存；异步环境下返回缓存/默认值，
+         * 由 warmup() 或 .then 回调异步填充缓存
          */
         get(key, defaultValue) {
-            let v = GM_getValue(key, undefined);
+            if (this._cache[key] !== undefined) return this._cache[key];
+            let v;
+            try { v = GM_getValue(key, undefined); }
+            catch (e) { return defaultValue; }
             // VM 可能返回 Promise
             if (v && typeof v.then === 'function') {
-                // 异步路径：返回默认值，实际值由调用方再次读取
-                // 项目约定不写 await，此处同步降级
+                v.then(raw => {
+                    this._cache[key] = this._parseValue(raw, defaultValue);
+                }).catch(() => {});
                 return defaultValue;
             }
+            const parsed = this._parseValue(v, defaultValue);
+            this._cache[key] = parsed;
+            return parsed;
+        },
+
+        _parseValue(v, defaultValue) {
             if (v === undefined || v === null) return defaultValue;
             if (typeof v === 'string') {
                 try { return JSON.parse(v); } catch (e) { return defaultValue; }
@@ -210,11 +225,41 @@
         },
 
         set(key, value) {
-            GM_setValue(key, JSON.stringify(value));
+            this._cache[key] = value; // 先写缓存（解析后的值）
+            try {
+                const ret = GM_setValue(key, JSON.stringify(value));
+                // VM 返回 Promise（异步落盘），加 .catch 避免 unhandled rejection
+                if (ret && typeof ret.then === 'function') ret.catch(() => {});
+            } catch (e) { /* 写失败静默（缓存仍生效，重启后丢失） */ }
         },
 
         remove(key) {
-            GM_deleteValue(key);
+            delete this._cache[key];
+            try {
+                const ret = GM_deleteValue(key);
+                if (ret && typeof ret.then === 'function') ret.catch(() => {});
+            } catch (e) { /* 忽略 */ }
+        },
+
+        /**
+         * 预热：把全部持久化键异步读入内存缓存。
+         * 必须在 UI 渲染/首次读取前调用（Violentmonkey 下 GM_getValue 是异步的）；
+         * Tampermonkey 同步环境下立即完成。
+         */
+        warmup() {
+            const keys = Object.values(STORAGE_KEYS);
+            const tasks = keys.map(key => {
+                try {
+                    const v = GM_getValue(key, undefined);
+                    if (v && typeof v.then === 'function') {
+                        return v.then(raw => { this._cache[key] = this._parseValue(raw, undefined); })
+                            .catch(() => {});
+                    }
+                    this._cache[key] = this._parseValue(v, undefined);
+                } catch (e) { /* 忽略单个键的读取失败 */ }
+                return Promise.resolve();
+            });
+            return Promise.all(tasks);
         },
 
         // ---------- 服务器 ----------
@@ -1497,7 +1542,7 @@
                     showToast('至少保留一个服务器', 'error');
                     return;
                 }
-                showConfirmBar(btn.id || 'aria2-server-list', '确定删除该服务器？', function () {
+                showConfirmBar(btn, '确定删除该服务器？', function () {
                     StorageManager.setServers(servers.filter(s => s.id !== id));
                     if (StorageManager.getLastServerId() === id) StorageManager.setLastServerId(null);
                     renderServerList();
@@ -1780,13 +1825,13 @@
 
     /**
      * 内嵌确认条（避免 confirm 阻塞）
-     * @param {string} triggerBtnId 触发按钮 id（会被临时隐藏）
+     * @param {HTMLElement|string} triggerBtn 触发按钮（元素或 id，会被临时隐藏）
      * @param {string} text 提示文本
      * @param {function} onConfirm 确认回调
      */
-    function showConfirmBar(triggerBtnId, text, onConfirm) {
-        const btn = document.getElementById(triggerBtnId);
-        if (!btn) { if (confirm(text)) onConfirm(); return; }
+    function showConfirmBar(triggerBtn, text, onConfirm) {
+        const btn = typeof triggerBtn === 'string' ? document.getElementById(triggerBtn) : triggerBtn;
+        if (!btn || !btn.parentNode) { if (confirm(text)) onConfirm(); return; }
 
         // 在按钮位置插入确认条，隐藏触发按钮
         const bar = document.createElement('div');
@@ -1935,8 +1980,16 @@
     // 9. 初始化（init）
     // ============================================================
     function init() {
-        StorageManager.migrateIfNeeded();
-        registerContextMenuListener();
+        // 先预热存储缓存（Violentmonkey 的 GM_getValue 是异步的），
+        // 保证后续 migrateIfNeeded / 读取服务器配置能拿到真实持久化值
+        StorageManager.warmup().then(() => {
+            StorageManager.migrateIfNeeded();
+            registerContextMenuListener();
+            _registerMenuCommands();
+        });
+    }
+
+    function _registerMenuCommands() {
 
         GM_registerMenuCommand('📥 发送到Aria2（用右键链接）', function () {
             if (!lastCapturedUrl) {
