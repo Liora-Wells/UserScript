@@ -783,16 +783,22 @@
             }
 
             const fileArch = this.parseFileArch(fileName);
+            // 架构分：精确匹配当前架构优先，其次通用包，再按通用性梯度。
+            // 修正：通用包(universal)不再永远压过精确匹配当前架构的包。
             if (fileArch === currentArch) innerScore += 500;
-            else if (fileArch === 'universal') innerScore += 600;
+            else if (fileArch === 'universal') innerScore += 350;
             else if (fileArch === 'x86_64') innerScore += 50;
             else if (fileArch === 'arm64') innerScore += 20;
             else if (fileArch === 'x86') innerScore += 10;
             else if (fileArch === 'arm32') innerScore += 5;
 
-            if (name.endsWith('.exe') || name.endsWith('.dmg') || name.endsWith('.appimage') || name.endsWith('.flatpak') || name.endsWith('.apk')) innerScore += 15;
-            if (name.endsWith('.zip') || name.endsWith('.7z')) innerScore += 5;
+            // 版本变体识别：同平台内的 win7/8/10/11、macos10/11、ubuntu18/20 等，更新版本排前
+            innerScore += this._versionScore(fileName);
 
+            // 安装类型：便携版优先于安装包，常规安装包其次，源码/文档最后
+            innerScore += this._kindScore(fileName);
+
+            // 安装类型分已由 _kindScore 统一处理（便携优先于安装包），此处不再重复加分
             return groupScore + innerScore;
         },
 
@@ -811,6 +817,55 @@
 
         getTagClass(groupId) {
             return 'ghhelper-tag-' + (groupId || 'other');
+        },
+
+        // 版本变体分：识别同平台内的 win7/8/10/11、macos10/11、ubuntu18/20 等，
+        // 让"更新的版本"在同平台内排前面，避免 win7/win10/win11 等被无序地堆在一起。
+        // 返回小值(0~几十分)，不影响架构主排序，只用于同平台内细分。
+        _versionScore(fileName) {
+            const n = fileName.toLowerCase();
+            let score = 0;
+            // Windows 版本：win11 > win10 > win8 > win7 > 无版本标记(0)
+            const winVer = /(?:win|windows)[\s_-]?(7|8\.1|8|10|11)\b/.exec(n);
+            if (winVer) {
+                const v = winVer[1];
+                if (v === '11') score += 30;
+                else if (v === '10') score += 22;
+                else if (v === '8.1' || v === '8') score += 14;
+                else if (v === '7') score += 8;
+            }
+            // macOS 版本：更新的 macOS 版本排前
+            const macVer = /(?:mac(?:os)?|darwin)[\s_-]?(10|11|12|13|14|15)\b/.exec(n);
+            if (macVer) {
+                const v = parseInt(macVer[1], 10);
+                // macOS 11~15 递增
+                score += (v - 10) * 4; // 11->4, 15->20
+            }
+            // Linux 常见发行版版本：兼容 ubuntu2204 / ubuntu22.04 / ubuntu-22.04 等写法
+            // 统一归一为"主版本号"用于排序（如 ubuntu2204 视为 22）
+            const linVer = /(?:ubuntu|debian|fedora|linuxmint|opensuse)[\s_-]?(\d{2,4})/.exec(n);
+            if (linVer) {
+                const digits = linVer[1];
+                // 4 位无分隔写法（如 2204）取前两位作为主版本；2~3 位直接用
+                const major = digits.length >= 4 ? parseInt(digits.slice(0, 2), 10) : parseInt(digits, 10);
+                score += major;
+            }
+            return score;
+        },
+
+        // 安装类型分：便携/独立版优先于安装包，常规安装包其次。
+        // 解决同一平台内 setup/portable/standalone 等变体被无序堆叠的问题。
+        _kindScore(fileName) {
+            const n = fileName.toLowerCase();
+            let score = 0;
+            // 便携 / 独立运行：最高优先级
+            if (/\b(portable|standalone|green|zip|win\.zip|no.?install)\b/.test(n) ||
+                n.endsWith('.zip') || n.endsWith('.7z')) score += 12;
+            // 常规安装包 / 可执行安装程序
+            else if (/\b(setup|installer|install)\b/.test(n) ||
+                n.endsWith('.exe') || n.endsWith('.msi') || n.endsWith('.dmg') ||
+                n.endsWith('.appimage') || n.endsWith('.apk')) score += 6;
+            return score;
         }
     };
 
