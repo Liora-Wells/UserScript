@@ -155,7 +155,8 @@
         },
 
         getFeatures() {
-            return this.get(STORAGE_KEYS.features, Object.assign({}, DEFAULT_FEATURES));
+            // 返回浅拷贝，避免调用方直接修改缓存对象
+            return Object.assign({}, this.get(STORAGE_KEYS.features, Object.assign({}, DEFAULT_FEATURES)));
         },
 
         setFeatures(features) {
@@ -976,6 +977,8 @@
 .ghhelper-scroll-top:hover{background-color:var(--button-default-bgColor-hover,var(--color-btn-hover-bg,#30363d))}
 .ghhelper-settings-overlay{position:fixed;inset:0;z-index:10000;background-color:rgba(1,4,9,0.6);display:flex;align-items:center;justify-content:center}
 .ghhelper-settings-modal{--color-canvas-default:#0d1117;--color-canvas-overlay:#0d1117;--color-canvas-subtle:#161b22;--color-canvas-inset:#010409;--color-border-default:#30363d;--color-border-muted:#21262d;--color-fg-default:#e6edf3;--color-fg-muted:#8b949e;--color-accent-fg:#58a6ff;--color-accent-emphasis:#1f6feb;--color-accent-muted:#388bfd;--color-attention-fg:#d29922;--color-attention-emphasis:#d4a72c;--color-attention-subtle:rgba(187,128,9,0.15);--color-success-fg:#1a7f37;--color-success-emphasis:#1a7f37;--color-success-subtle:rgba(26,127,55,0.15);--color-danger-fg:#f85149;--color-danger-emphasis:#f85149;--color-danger-subtle:rgba(248,81,73,0.1);--color-neutral-muted:rgba(110,118,129,0.4);--color-btn-bg:#21262d;--color-btn-border:rgba(240,246,252,0.1);--color-btn-text:#c9d1d9;--color-btn-hover-bg:#30363d;--color-btn-hover-text:#ffffff;--overlay-bgColor:#0d1117;--bgColor-attention-subtle:rgba(187,140,9,0.15);--fgColor-default:#e6edf3;--fgColor-muted:#8b949e;--fgColor-accent:#58a6ff;--fgColor-accent-emphasis:#1f6feb;--fgColor-attention:#d29922;--button-default-bgColor-rest:#21262d;--button-default-fgColor-rest:#c9d1d9;--button-default-bgColor-hover:#30363d;--button-default-fgColor-hover:#ffffff;--button-default-borderColor-rest:rgba(240,246,252,0.1);--color-action-list-item-default-hover-bg:rgba(177,186,196,0.12);color:#e6edf3;color-scheme:dark;background-color:var(--color-canvas-default,#0d1117);border:1px solid var(--color-border-default,#30363d);border-radius:12px;width:560px;max-width:92vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:var(--shadow-floating-large,0 8px 24px rgba(0,0,0,0.4))}
+/* 浅色主题：根据 GitHub 当前主题在弹窗容器上设置 data-ghhelper-settings-theme 属性切换 */
+.ghhelper-settings-overlay[data-ghhelper-settings-theme="light"] .ghhelper-settings-modal{--color-canvas-default:#ffffff;--color-canvas-overlay:#ffffff;--color-canvas-subtle:#f6f8fa;--color-canvas-inset:#f6f8fa;--color-border-default:#d1d9e0;--color-border-muted:#d8dee4;--color-fg-default:#1f2328;--color-fg-muted:#59636e;--color-accent-fg:#0969da;--color-accent-emphasis:#0969da;--color-accent-muted:#54aeff;--color-attention-fg:#9a6700;--color-attention-emphasis:#bf8700;--color-attention-subtle:rgba(175,110,0,0.2);--color-success-fg:#1a7f37;--color-success-emphasis:#1f8834;--color-success-subtle:rgba(26,127,55,0.15);--color-danger-fg:#cf222e;--color-danger-emphasis:#cf222e;--color-danger-subtle:rgba(207,34,46,0.1);--color-neutral-muted:rgba(175,184,193,0.2);--color-btn-bg:#f6f8fa;--color-btn-border:rgba(31,35,40,0.15);--color-btn-text:#24292f;--color-btn-hover-bg:#eaeef2;--color-btn-hover-text:#1f2328;--overlay-bgColor:#ffffff;--bgColor-attention-subtle:rgba(175,110,0,0.1);--fgColor-default:#1f2328;--fgColor-muted:#59636e;--fgColor-accent:#0969da;--fgColor-accent-emphasis:#0969da;--fgColor-attention:#9a6700;--button-default-bgColor-rest:#f6f8fa;--button-default-fgColor-rest:#24292f;--button-default-bgColor-hover:#eaeef2;--button-default-fgColor-hover:#1f2328;--button-default-borderColor-rest:rgba(31,35,40,0.15);--color-action-list-item-default-hover-bg:rgba(140,149,159,0.1);color:#1f2328;color-scheme:light}
 .ghhelper-settings-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--color-border-default,#30363d)}
 .ghhelper-settings-header h3{margin:0;font-size:16px}
 .ghhelper-settings-close{background:none;border:none;color:var(--fgColor-muted,var(--color-fg-muted));cursor:pointer;font-size:22px;line-height:1;padding:0}
@@ -1604,7 +1607,8 @@
                 if (!seg.length) return;
                 seg.forEach(r => {
                     const n = r._ghn ? this.getFileNameFromLink(r._ghn) : '';
-                    if (SortEngine.isSignatureFile(n)) {
+                    // 签名/校验/源码 文件统一收进底部折叠区，避免一大坨排在最后
+                    if (SortEngine.isSignatureFile(n) || SortEngine.isSourceFile(n)) {
                         allAux.push(r);
                     } else {
                         parent.appendChild(r);
@@ -1629,7 +1633,7 @@
                 // 保留旧 wrapper 的展开状态，避免重建后折叠
                 if (prevWrapperOpen) w.setAttribute('open', 'open');
                 const s = document.createElement('summary');
-                s.textContent = '签名 / 校验 (' + allAux.length + ')';
+                s.textContent = '签名 / 源码 / 校验 (' + allAux.length + ')';
                 w.appendChild(s);
                 allAux.forEach(r => { w.appendChild(r); style(r); });
                 parent.appendChild(w);
@@ -1662,9 +1666,9 @@
                 }
                 const score = nl ? SortEngine.calculateMatchScore(fn, gi, os, arch) : -10000;
                 row._ghs = score; row._ghg = gi; row._ghn = nl;
-                // 签名/校验/meta 行不参与重排（留在 wrapper 内不动）
-                if (gi.id === 'meta' || SortEngine.isSignatureFile(fn)) {
-                    // 签名行留在 wrapper 内，只更新样式
+                // 签名/源码/校验/meta 行不参与重排（留在 wrapper 内不动）
+                if (gi.id === 'meta' || SortEngine.isSignatureFile(fn) || SortEngine.isSourceFile(fn)) {
+                    // 留在 wrapper 内，只更新样式
                     this._styleRow(row);
                 } else {
                     nonAux.push(row);
@@ -2807,22 +2811,51 @@
     const SettingsPanel = {
         _overlay: null,
         _activeTab: 'proxies',
+        _prevFocus: null,    // 打开设置前聚焦的元素，关闭时归还焦点
+        _searchTimer: null,  // 搜索防抖 timer
+        _escHandler: null,   // 全局 Esc 关闭处理器
 
         show() {
             LOG('SettingsPanel.show 调用');
+            // 记录触发按钮，关闭时归还焦点
+            if (document.activeElement && document.activeElement !== document.body) {
+                this._prevFocus = document.activeElement;
+            }
             if (this._overlay) {
+                this._applyTheme();
                 this._overlay.style.display = 'flex';
+                this._focusCloseBtn();
                 this.renderTab(this._activeTab);
                 return;
             }
             this._overlay = this.create();
             LOG('SettingsPanel overlay 创建完成, 追加到 body');
             document.body.appendChild(this._overlay);
+            this._applyTheme();
+            this._focusCloseBtn();
             this.renderTab('proxies');
         },
 
         hide() {
-            if (this._overlay) this._overlay.style.display = 'none';
+            if (!this._overlay) return;
+            this._overlay.style.display = 'none';
+            // 归还焦点到触发元素
+            if (this._prevFocus && this._prevFocus.focus) {
+                try { this._prevFocus.focus(); } catch (e) { /* 忽略 */ }
+            }
+            this._prevFocus = null;
+        },
+
+        // 依据 GitHub 当前主题（html[data-color-mode]）设置弹窗浅色/暗色
+        _applyTheme() {
+            const mode = (document.documentElement.getAttribute('data-color-mode') || '').toLowerCase();
+            const theme = mode === 'light' ? 'light' : 'dark';
+            if (this._overlay) this._overlay.setAttribute('data-ghhelper-settings-theme', theme);
+        },
+
+        _focusCloseBtn() {
+            const closeBtn = this._overlay && this._overlay.querySelector('#ghhelper-close');
+            if (closeBtn && closeBtn.focus) closeBtn.focus();
         },
 
         create() {
@@ -2830,11 +2863,13 @@
             overlay.className = 'ghhelper-settings-overlay';
             overlay.setAttribute('data-ghhelper-element', '1');
             overlay.setAttribute('data-ghhelper-nt', '1');
+            overlay.setAttribute('role', 'dialog');
+            overlay.setAttribute('aria-modal', 'true');
             overlay.innerHTML = `
 <div class="ghhelper-settings-modal">
   <div class="ghhelper-settings-header">
     <h3>GitHub 助手设置</h3>
-    <button class="ghhelper-settings-close" id="ghhelper-close">&times;</button>
+    <button class="ghhelper-settings-close" id="ghhelper-close" aria-label="关闭设置">&times;</button>
   </div>
   <div class="ghhelper-settings-tabs">
     <button class="ghhelper-settings-tab active" data-tab="proxies">加速源管理</button>
@@ -2846,6 +2881,19 @@
 </div>`;
             overlay.querySelector('#ghhelper-close').addEventListener('click', () => this.hide());
             overlay.addEventListener('click', e => { if (e.target === overlay) this.hide(); });
+            // Esc 关闭（只绑一次）
+            if (!overlay.dataset.ghhelperEscBound) {
+                overlay.dataset.ghhelperEscBound = '1';
+                overlay.addEventListener('keydown', e => {
+                    if (e.key === 'Escape') { e.stopPropagation(); this.hide(); }
+                });
+                document.addEventListener('keydown', this._escHandler = (e) => {
+                    if (e.key === 'Escape' && this._overlay && this._overlay.style.display !== 'none') {
+                        e.preventDefault();
+                        this.hide();
+                    }
+                });
+            }
             overlay.querySelectorAll('.ghhelper-settings-tab').forEach(tab => {
                 tab.addEventListener('click', () => {
                     overlay.querySelectorAll('.ghhelper-settings-tab').forEach(t => t.classList.remove('active'));
@@ -3046,14 +3094,20 @@
             // 事件绑定
             const searchInput = document.getElementById('ghhelper-search');
             const searchClear = document.getElementById('ghhelper-search-clear');
+            // 搜索防抖：代理源多时避免每次按键全量重建 Chip 行与分组列表
             searchInput.addEventListener('input', (e) => {
                 const val = e.target.value;
                 searchClear.style.display = val ? 'block' : 'none';
-                this._setFilter('keyword', val);
+                if (this._searchTimer) clearTimeout(this._searchTimer);
+                this._searchTimer = setTimeout(() => {
+                    this._searchTimer = null;
+                    this._setFilter('keyword', val);
+                }, 180);
             });
             searchClear.addEventListener('click', () => {
                 searchInput.value = '';
                 searchClear.style.display = 'none';
+                if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
                 this._setFilter('keyword', '');
             });
 
@@ -3925,7 +3979,7 @@
 <div class="ghhelper-settings-section">
   <h4>反馈</h4>
   <p style="font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted))">
-    如有问题或建议，请访问 <a href="https://github.com/Liora-Wells/UserScript" target="_blank">GitHub 仓库</a>
+    如有问题或建议，请访问 <a href="https://github.com/Liora-Wells/UserScript" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
   </p>
 </div>`;
             // 用 textContent 填充版本号，避免 innerHTML 模板注入风险
