@@ -1050,6 +1050,17 @@
 .ghhelper-status-action{background:none;border:none;color:var(--color-accent-fg,#58a6ff);cursor:pointer;font-size:11px;padding:0;text-decoration:underline}
 .ghhelper-status-action:hover{color:var(--color-accent-muted,#58a6ff)}
 .ghhelper-empty-hint{text-align:center;padding:20px;color:var(--color-fg-muted,#8b949e);font-size:12px}
+/* 功能开关卡片：从内联样式抽出的复用类 */
+.ghhelper-feature-card{display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--color-border-default,#30363d);border-radius:8px;margin-bottom:8px}
+.ghhelper-feature-icon{font-size:18px;line-height:1.4;flex-shrink:0}
+.ghhelper-feature-main{flex:1;min-width:0}
+.ghhelper-feature-title-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.ghhelper-feature-title{font-weight:600;font-size:13px}
+.ghhelper-feature-desc{font-size:12px;color:var(--fgColor-default,var(--color-fg-default));margin-bottom:2px}
+.ghhelper-feature-impact{font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))}
+.ghhelper-feature-badge{font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid}
+.ghhelper-feature-badge.ghhelper-feature-badge-default{color:var(--color-success-fg,#1a7f37);border-color:var(--color-success-emphasis,#1a7f37)}
+.ghhelper-feature-badge.ghhelper-feature-badge-off{color:var(--color-fg-muted,#8b949e);border-color:var(--color-border-default,#30363d)}
 .ghhelper-input{padding:4px 8px;font-size:12px;border:1px solid var(--color-border-default,#30363d);border-radius:6px;background-color:var(--color-canvas-default,#0d1117);color:var(--fgColor-default,var(--color-fg-default));width:100%;box-sizing:border-box}
 .ghhelper-select{padding:4px 8px;font-size:12px;border:1px solid var(--color-border-default,#30363d);border-radius:6px;background-color:var(--color-canvas-default,#0d1117);color:var(--fgColor-default,var(--color-fg-default))}
 .ghhelper-gear-btn{position:fixed;right:24px;top:80px;z-index:9998;width:36px;height:36px;border-radius:50%;border:1px solid var(--button-default-borderColor-rest,var(--color-btn-border,rgba(240,246,252,0.1)));background-color:var(--button-default-bgColor-rest,var(--color-btn-bg,#21262d));color:var(--button-default-fgColor-rest,var(--color-btn-text,#c9d1d9));cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.2);opacity:0.7;transition:opacity 0.15s}
@@ -1248,6 +1259,13 @@
     border-radius: 6px;
     font-size: 12px;
     cursor: pointer;
+}
+
+/* 添加模式：已选类型计数反馈 */
+.ghhelper-type-count {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--fgColor-muted, var(--color-fg-muted));
 }
 
 /* "设为默认 ☁" 单选按钮容器 */
@@ -2814,6 +2832,7 @@
         _prevFocus: null,    // 打开设置前聚焦的元素，关闭时归还焦点
         _searchTimer: null,  // 搜索防抖 timer
         _escHandler: null,   // 全局 Esc 关闭处理器
+        _themeObserver: null, // 监听 GitHub 主题切换的 MutationObserver
 
         show() {
             LOG('SettingsPanel.show 调用');
@@ -2851,6 +2870,14 @@
             const mode = (document.documentElement.getAttribute('data-color-mode') || '').toLowerCase();
             const theme = mode === 'light' ? 'light' : 'dark';
             if (this._overlay) this._overlay.setAttribute('data-ghhelper-settings-theme', theme);
+            // 监听主题切换，弹窗打开时也能实时跟随（幂等，只初始化一次）
+            if (!this._themeObserver && typeof MutationObserver !== 'undefined') {
+                this._themeObserver = new MutationObserver(() => this._applyTheme());
+                this._themeObserver.observe(document.documentElement, {
+                    attributes: true,
+                    attributeFilter: ['data-color-mode']
+                });
+            }
         },
 
         _focusCloseBtn() {
@@ -2901,6 +2928,19 @@
                     this._activeTab = tab.dataset.tab;
                     this.renderTab(tab.dataset.tab);
                 });
+            });
+            // Tab 方向键切换：← → 在 4 个设置页签间循环
+            overlay.addEventListener('keydown', (e) => {
+                if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+                const tabs = Array.from(overlay.querySelectorAll('.ghhelper-settings-tab'));
+                if (!tabs.length) return;
+                const cur = tabs.findIndex(t => t.classList.contains('active'));
+                let next;
+                if (e.key === 'ArrowRight') next = (cur + 1) % tabs.length;
+                else next = (cur - 1 + tabs.length) % tabs.length;
+                e.preventDefault();
+                tabs[next].click();
+                tabs[next].focus();
             });
             return overlay;
         },
@@ -3286,6 +3326,20 @@
                         }
                         return;
                     }
+                    // 复制加速源 URL 到剪贴板
+                    const copyBtn = e.target.closest('[data-proxy-copy]');
+                    if (copyBtn) {
+                        const proxy = StorageManager.getProxies().find(p => p.id === copyBtn.dataset.proxyCopy);
+                        if (!proxy) return;
+                        try {
+                            if (typeof GM_setClipboard !== 'undefined') GM_setClipboard(proxy.url);
+                            else navigator.clipboard.writeText(proxy.url);
+                            Toast.success('已复制加速源 URL');
+                        } catch (err) {
+                            Toast.error('复制失败');
+                        }
+                        return;
+                    }
                     // 表单内的取消按钮
                     const cancelBtn = e.target.closest('[data-form-cancel]');
                     if (cancelBtn) {
@@ -3324,6 +3378,18 @@
                         const errEl = field.parentElement.querySelector('.ghhelper-proxy-form-error');
                         if (errEl) errEl.remove();
                     }
+                });
+                // 表单内按 Enter 提交（文本框/输入框；避免在开关、textarea、多行时误触）
+                listEl.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter') return;
+                    const field = e.target.closest('[data-form-field]');
+                    if (!field) return;
+                    if (field.tagName === 'TEXTAREA') return;      // 多行文本不拦截 Enter
+                    if (field.type === 'checkbox') return;           // 开关用空格切换，不拦截
+                    const saveBtn = listEl.querySelector('[data-form-save]');
+                    if (!saveBtn) return;
+                    e.preventDefault();
+                    saveBtn.click();
                 });
             }
         },
@@ -3366,7 +3432,7 @@
             html += '</div>';
             html += '</div>';
             // 第二行 URL
-            html += '<div class="ghhelper-proxy-url" data-ghhelper-nt="1">' + this._escapeHtml(p.url) + '</div>';
+            html += '<div class="ghhelper-proxy-url" data-ghhelper-nt="1">' + this._escapeHtml(p.url) + ' <button class="ghhelper-status-action" data-proxy-copy="' + this._escapeHtml(p.id) + '" title="复制 URL" data-ghhelper-nt="1">复制</button></div>';
             // 第三行 备注
             if (p.desc) {
                 html += '<div class="ghhelper-proxy-desc" data-ghhelper-nt="1">' + this._escapeHtml(p.desc) + '</div>';
@@ -3436,6 +3502,8 @@
                 html += '</div>';
                 // 至少选择一个类型的提示（默认隐藏）
                 html += '<div class="ghhelper-proxy-form-error" data-type-error="1" data-ghhelper-nt="1" style="display:none">至少选择一个类型</div>';
+                // 已选类型计数（即时反馈将创建几个加速源）
+                html += '<div class="ghhelper-type-count" data-type-count="1" data-ghhelper-nt="1"></div>';
             }
             html += '</div>';
             // URL（整行）
@@ -3499,6 +3567,19 @@
             tempCard.innerHTML = this._renderEditForm('add', { type: 'download', enabled: true });
             listEl.insertBefore(tempCard, listEl.firstChild);
             tempCard.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            // 类型即时计数：随勾选实时更新"将创建 N 个加速源"
+            const typeCbs = tempCard.querySelectorAll('input[data-form-field="type"]');
+            const typeCountEl = tempCard.querySelector('[data-type-count]');
+            if (typeCountEl) {
+                const update = () => {
+                    const n = Array.from(typeCbs).filter(cb => cb.checked).length;
+                    typeCountEl.textContent = n === 0
+                        ? '请至少选择一个类型'
+                        : '将创建 ' + n + ' 个加速源（每个类型一个）';
+                };
+                typeCbs.forEach(cb => cb.addEventListener('change', update));
+                update();
+            }
         },
 
         _handleFormSave(saveBtn) {
@@ -3638,6 +3719,12 @@
             html += '</div>';
             // 手动勾选清单（默认隐藏）
             html += '<div class="ghhelper-backup-manual" id="ghhelper-backup-manual" data-ghhelper-nt="1" style="display:none">';
+            // 全选/清空快捷操作
+            html += '<div class="ghhelper-backup-manual-tools" data-ghhelper-nt="1">';
+            html += '<button type="button" class="ghhelper-status-action" data-manual-toggle="all" data-ghhelper-nt="1">全选</button>';
+            html += '<span data-ghhelper-nt="1" style="opacity:0.4">·</span>';
+            html += '<button type="button" class="ghhelper-status-action" data-manual-toggle="none" data-ghhelper-nt="1">清空</button>';
+            html += '</div>';
             html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="proxies-group" checked data-ghhelper-nt="1"> 加速源（含默认 Raw 源、已删内置列表）</label>';
             html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="features" checked data-ghhelper-nt="1"> 功能开关</label>';
             html += '<label data-ghhelper-nt="1"><input type="checkbox" data-manual-key="maxDisplay" data-ghhelper-nt="1"> 最大显示数量</label>';
@@ -3759,6 +3846,14 @@
                     } else if (radio.checked) {
                         manualBox.style.display = 'none';
                     }
+                });
+            });
+
+            // 手动勾选清单：全选 / 清空
+            body.querySelectorAll('[data-manual-toggle]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const on = btn.dataset.manualToggle === 'all';
+                    manualBox.querySelectorAll('input[data-manual-key]').forEach(cb => { cb.checked = on; });
                 });
             });
         },
@@ -3886,17 +3981,17 @@
             let html = '<div class="ghhelper-settings-section"><h4>功能开关</h4>';
             items.forEach(item => {
                 const enabled = StorageManager.isFeatureEnabled(item.key);
-                const badgeClass = DEFAULT_FEATURES[item.key] ? 'Label--success' : '';
+                const badgeClass = DEFAULT_FEATURES[item.key] ? 'ghhelper-feature-badge-default' : 'ghhelper-feature-badge-off';
                 const badgeText = DEFAULT_FEATURES[item.key] ? '默认开启' : '默认关闭';
-                html += '<div class="ghhelper-feature-card" data-ghhelper-nt="1" style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--color-border-default,#30363d);border-radius:8px;margin-bottom:8px">';
-                html += '<span data-ghhelper-nt="1" style="font-size:18px;line-height:1.4">' + item.icon + '</span>';
-                html += '<div data-ghhelper-nt="1" style="flex:1;min-width:0">';
-                html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-                html += '<span data-ghhelper-nt="1" style="font-weight:600;font-size:13px">' + item.label + '</span>';
-                html += '<span data-ghhelper-nt="1" class="Label ' + badgeClass + '" style="font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid">' + badgeText + '</span>';
+                html += '<div class="ghhelper-feature-card" data-ghhelper-nt="1">';
+                html += '<span class="ghhelper-feature-icon" data-ghhelper-nt="1">' + item.icon + '</span>';
+                html += '<div class="ghhelper-feature-main" data-ghhelper-nt="1">';
+                html += '<div class="ghhelper-feature-title-row" data-ghhelper-nt="1">';
+                html += '<span class="ghhelper-feature-title" data-ghhelper-nt="1">' + item.label + '</span>';
+                html += '<span class="ghhelper-feature-badge ' + badgeClass + '" data-ghhelper-nt="1">' + badgeText + '</span>';
                 html += '</div>';
-                html += '<div data-ghhelper-nt="1" style="font-size:12px;color:var(--fgColor-default,var(--color-fg-default));margin-bottom:2px">' + item.desc + '</div>';
-                html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">影响：' + item.impact + '</div>';
+                html += '<div class="ghhelper-feature-desc" data-ghhelper-nt="1">' + item.desc + '</div>';
+                html += '<div class="ghhelper-feature-impact" data-ghhelper-nt="1">影响：' + item.impact + '</div>';
                 html += '</div>';
                 html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (enabled ? 'checked' : '') + ' data-feature="' + item.key + '"><span class="ghhelper-toggle-slider"></span></label>';
                 html += '</div>';
@@ -3905,14 +4000,14 @@
 
             // 调试日志开关（独立于功能开关，仅控制控制台日志输出）
             html += '<div class="ghhelper-settings-section"><h4>调试</h4>';
-            html += '<div class="ghhelper-feature-card" data-ghhelper-nt="1" style="display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--color-border-default,#30363d);border-radius:8px;margin-bottom:8px">';
-            html += '<span data-ghhelper-nt="1" style="font-size:18px;line-height:1.4">🔧</span>';
-            html += '<div data-ghhelper-nt="1" style="flex:1;min-width:0">';
-            html += '<div data-ghhelper-nt="1" style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-            html += '<span data-ghhelper-nt="1" style="font-weight:600;font-size:13px">调试日志</span>';
+            html += '<div class="ghhelper-feature-card" data-ghhelper-nt="1">';
+            html += '<span class="ghhelper-feature-icon" data-ghhelper-nt="1">🔧</span>';
+            html += '<div class="ghhelper-feature-main" data-ghhelper-nt="1">';
+            html += '<div class="ghhelper-feature-title-row" data-ghhelper-nt="1">';
+            html += '<span class="ghhelper-feature-title" data-ghhelper-nt="1">调试日志</span>';
             html += '</div>';
-            html += '<div data-ghhelper-nt="1" style="font-size:12px;color:var(--fgColor-default,var(--color-fg-default));margin-bottom:2px">在控制台输出 [GH助手] 前缀的诊断日志，便于排查问题</div>';
-            html += '<div data-ghhelper-nt="1" style="font-size:11px;color:var(--fgColor-muted,var(--color-fg-muted))">影响：打开后可在开发者工具控制台查看详细运行日志</div>';
+            html += '<div class="ghhelper-feature-desc" data-ghhelper-nt="1">在控制台输出 [GH助手] 前缀的诊断日志，便于排查问题</div>';
+            html += '<div class="ghhelper-feature-impact" data-ghhelper-nt="1">影响：打开后可在开发者工具控制台查看详细运行日志</div>';
             html += '</div>';
             html += '<label class="ghhelper-toggle" data-ghhelper-nt="1"><input type="checkbox" ' + (DEBUG ? 'checked' : '') + ' data-debug="1"><span class="ghhelper-toggle-slider"></span></label>';
             html += '</div>';
