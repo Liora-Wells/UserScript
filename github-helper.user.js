@@ -83,27 +83,27 @@
         { value: 'riscv64', label: 'riscv64' }
     ];
 
-    // 内置加速源（按设计文档精简）
+    // 内置加速源（2026-11 更新：基于社区实测，移除失效源，换成更稳定的一批）
     const BUILTIN_PROXIES = [
         // 下载/ZIP 加速
-        { id: 'builtin_dl_1', type: 'download', url: 'https://gh-proxy.org/https://github.com', name: '美国1', desc: '[美国 Cloudflare CDN]', region: '美国', enabled: true, builtIn: true },
-        { id: 'builtin_dl_2', type: 'download', url: 'https://gh.h233.eu.org/https://github.com', name: '美国2', desc: '[美国 Cloudflare CDN]', region: '美国', enabled: true, builtIn: true },
-        { id: 'builtin_dl_3', type: 'download', url: 'https://ghproxy.net/https://github.com', name: '日本', desc: '[日本 Cloudflare CDN]', region: '日本', enabled: true, builtIn: true },
-        { id: 'builtin_dl_4', type: 'download', url: 'https://ghfast.top/https://github.com', name: '韩国', desc: '[韩国 CDN 不固定]', region: '韩国', enabled: true, builtIn: true },
-        { id: 'builtin_dl_5', type: 'download', url: 'https://wget.la/https://github.com', name: '香港', desc: '[香港 CDN 不固定]', region: '香港', enabled: true, builtIn: true },
-        { id: 'builtin_dl_6', type: 'download', url: 'https://hk.gh-proxy.org/https://github.com', name: '香港2', desc: '[香港 Cloudflare CDN]', region: '香港', enabled: true, builtIn: true },
-        { id: 'builtin_dl_7', type: 'download', url: 'https://gh.catmak.name/https://github.com', name: '韩国2', desc: '[韩国 Cloudflare CDN]', region: '韩国', enabled: true, builtIn: true },
+        { id: 'builtin_dl_1', type: 'download', url: 'https://gh-proxy.org/https://github.com', name: '美国1', desc: '[GH-Proxy Cloudflare CDN，稳定]', region: '美国', enabled: true, builtIn: true },
+        { id: 'builtin_dl_2', type: 'download', url: 'https://gh.llkk.cc/https://github.com', name: '美国2', desc: '[Cloudflare Worker，较稳定]', region: '美国', enabled: true, builtIn: true },
+        { id: 'builtin_dl_3', type: 'download', url: 'https://ghproxy.net/https://github.com', name: '日本', desc: '[Cloudflare CDN，小文件稳定]', region: '日本', enabled: true, builtIn: true },
+        { id: 'builtin_dl_4', type: 'download', url: 'https://ghfast.top/https://github.com', name: '韩国', desc: '[CDN 不固定，实测稳定]', region: '韩国', enabled: true, builtIn: true },
+        { id: 'builtin_dl_5', type: 'download', url: 'https://gh-proxy.com/https://github.com', name: '全球', desc: '[GH-Proxy Anycast，功能最全]', region: '全球', enabled: true, builtIn: true },
+        { id: 'builtin_dl_6', type: 'download', url: 'https://hk.gh-proxy.org/https://github.com', name: '香港', desc: '[香港 Cloudflare CDN]', region: '香港', enabled: true, builtIn: true },
+        { id: 'builtin_dl_7', type: 'download', url: 'https://gh.catmak.name/https://github.com', name: '备用', desc: '[Cloudflare CDN，作备用]', region: '备用', enabled: true, builtIn: true },
         // Raw 加速
-        { id: 'builtin_raw_1', type: 'raw', url: 'https://fastly.jsdelivr.net/gh', name: '日本', desc: '[JSDelivr CDN，有50MB限制]', region: '日本', enabled: true, builtIn: true },
-        { id: 'builtin_raw_2', type: 'raw', url: 'https://gh-proxy.org/https://raw.githubusercontent.com', name: '美国', desc: '[美国 Cloudflare CDN]', region: '美国', enabled: true, builtIn: true },
-        { id: 'builtin_raw_3', type: 'raw', url: 'https://wget.la/https://raw.githubusercontent.com', name: '香港', desc: '[香港 CDN 不固定]', region: '香港', enabled: true, builtIn: true },
-        { id: 'builtin_raw_4', type: 'raw', url: 'https://ghfast.top/https://raw.githubusercontent.com', name: '韩国', desc: '[韩国 CDN 不固定]', region: '韩国', enabled: true, builtIn: true },
-        { id: 'builtin_raw_5', type: 'raw', url: 'https://gh.catmak.name/https://raw.githubusercontent.com', name: '韩国2', desc: '[韩国 Cloudflare CDN]', region: '韩国', enabled: true, builtIn: true },
+        { id: 'builtin_raw_1', type: 'raw', url: 'https://fastly.jsdelivr.net/gh', name: 'JSDelivr', desc: '[JSDelivr CDN，有50MB限制]', region: '全球', enabled: true, builtIn: true },
+        { id: 'builtin_raw_2', type: 'raw', url: 'https://gh-proxy.org/https://raw.githubusercontent.com', name: '美国', desc: '[GH-Proxy Cloudflare CDN]', region: '美国', enabled: true, builtIn: true },
+        { id: 'builtin_raw_3', type: 'raw', url: 'https://gh-proxy.com/https://raw.githubusercontent.com', name: '全球', desc: '[GH-Proxy Anycast，功能最全]', region: '全球', enabled: true, builtIn: true },
+        { id: 'builtin_raw_4', type: 'raw', url: 'https://ghfast.top/https://raw.githubusercontent.com', name: '韩国', desc: '[CDN 不固定，实测稳定]', region: '韩国', enabled: true, builtIn: true },
+        { id: 'builtin_raw_5', type: 'raw', url: 'https://gh.llkk.cc/https://raw.githubusercontent.com', name: '备用', desc: '[Cloudflare Worker，备用]', region: '备用', enabled: true, builtIn: true },
         // Clone 加速（复用下载源）
-        { id: 'builtin_clone_1', type: 'clone', url: 'https://gitclone.com', name: '国内', desc: '[中国 国内 GitClone]', region: '国内', enabled: true, builtIn: true },
-        { id: 'builtin_clone_2', type: 'clone', url: 'https://wget.la/https://github.com', name: '香港', desc: '[香港 CDN 不固定]', region: '香港', enabled: true, builtIn: true },
-        { id: 'builtin_clone_3', type: 'clone', url: 'https://hk.gh-proxy.org/https://github.com', name: '香港2', desc: '[香港 Cloudflare CDN]', region: '香港', enabled: true, builtIn: true },
-        { id: 'builtin_clone_4', type: 'clone', url: 'https://ghfast.top/https://github.com', name: '韩国', desc: '[韩国 CDN 不固定]', region: '韩国', enabled: true, builtIn: true },
+        { id: 'builtin_clone_1', type: 'clone', url: 'https://gh-proxy.com/https://github.com', name: '全球', desc: '[GH-Proxy，支持 git clone]', region: '全球', enabled: true, builtIn: true },
+        { id: 'builtin_clone_2', type: 'clone', url: 'https://gh.llkk.cc/https://github.com', name: '美国', desc: '[Cloudflare Worker，备用]', region: '美国', enabled: true, builtIn: true },
+        { id: 'builtin_clone_3', type: 'clone', url: 'https://hk.gh-proxy.org/https://github.com', name: '香港', desc: '[香港 Cloudflare CDN]', region: '香港', enabled: true, builtIn: true },
+        { id: 'builtin_clone_4', type: 'clone', url: 'https://ghfast.top/https://github.com', name: '韩国', desc: '[CDN 不固定，实测稳定]', region: '韩国', enabled: true, builtIn: true },
         // SSH Clone
         { id: 'builtin_ssh_1', type: 'ssh', url: 'ssh://git@ssh.github.com:443/', name: '官方', desc: '[GitHub 443端口SSH]', region: '官方', enabled: true, builtIn: true }
     ];
@@ -2840,6 +2840,7 @@
             if (document.activeElement && document.activeElement !== document.body) {
                 this._prevFocus = document.activeElement;
             }
+            this._bindGlobal();   // 弹窗打开期间才挂 document 级监听/观察器
             if (this._overlay) {
                 this._applyTheme();
                 this._overlay.style.display = 'flex';
@@ -2858,6 +2859,7 @@
         hide() {
             if (!this._overlay) return;
             this._overlay.style.display = 'none';
+            this._unbindGlobal();  // 关闭后移除 document 级监听/观察器，避免常驻
             // 归还焦点到触发元素
             if (this._prevFocus && this._prevFocus.focus) {
                 try { this._prevFocus.focus(); } catch (e) { /* 忽略 */ }
@@ -2865,12 +2867,17 @@
             this._prevFocus = null;
         },
 
-        // 依据 GitHub 当前主题（html[data-color-mode]）设置弹窗浅色/暗色
-        _applyTheme() {
-            const mode = (document.documentElement.getAttribute('data-color-mode') || '').toLowerCase();
-            const theme = mode === 'light' ? 'light' : 'dark';
-            if (this._overlay) this._overlay.setAttribute('data-ghhelper-settings-theme', theme);
-            // 监听主题切换，弹窗打开时也能实时跟随（幂等，只初始化一次）
+        // 弹窗打开时挂上 document 级 Esc 与主题观察器（幂等，避免重复绑定）
+        _bindGlobal() {
+            if (!this._escHandler) {
+                this._escHandler = (e) => {
+                    if (e.key === 'Escape' && this._overlay && this._overlay.style.display !== 'none') {
+                        e.preventDefault();
+                        this.hide();
+                    }
+                };
+                document.addEventListener('keydown', this._escHandler);
+            }
             if (!this._themeObserver && typeof MutationObserver !== 'undefined') {
                 this._themeObserver = new MutationObserver(() => this._applyTheme());
                 this._themeObserver.observe(document.documentElement, {
@@ -2878,6 +2885,25 @@
                     attributeFilter: ['data-color-mode']
                 });
             }
+        },
+
+        // 弹窗关闭时移除 document 级监听/观察器
+        _unbindGlobal() {
+            if (this._escHandler) {
+                document.removeEventListener('keydown', this._escHandler);
+                this._escHandler = null;
+            }
+            if (this._themeObserver) {
+                this._themeObserver.disconnect();
+                this._themeObserver = null;
+            }
+        },
+
+        // 依据 GitHub 当前主题（html[data-color-mode]）设置弹窗浅色/暗色
+        _applyTheme() {
+            const mode = (document.documentElement.getAttribute('data-color-mode') || '').toLowerCase();
+            const theme = mode === 'light' ? 'light' : 'dark';
+            if (this._overlay) this._overlay.setAttribute('data-ghhelper-settings-theme', theme);
         },
 
         _focusCloseBtn() {
@@ -2908,19 +2934,10 @@
 </div>`;
             overlay.querySelector('#ghhelper-close').addEventListener('click', () => this.hide());
             overlay.addEventListener('click', e => { if (e.target === overlay) this.hide(); });
-            // Esc 关闭（只绑一次）
-            if (!overlay.dataset.ghhelperEscBound) {
-                overlay.dataset.ghhelperEscBound = '1';
-                overlay.addEventListener('keydown', e => {
-                    if (e.key === 'Escape') { e.stopPropagation(); this.hide(); }
-                });
-                document.addEventListener('keydown', this._escHandler = (e) => {
-                    if (e.key === 'Escape' && this._overlay && this._overlay.style.display !== 'none') {
-                        e.preventDefault();
-                        this.hide();
-                    }
-                });
-            }
+            // 弹窗内任意位置 Esc 关闭（document 级由 _bindGlobal/_unbindGlobal 管理）
+            overlay.addEventListener('keydown', e => {
+                if (e.key === 'Escape') { e.stopPropagation(); this.hide(); }
+            });
             overlay.querySelectorAll('.ghhelper-settings-tab').forEach(tab => {
                 tab.addEventListener('click', () => {
                     overlay.querySelectorAll('.ghhelper-settings-tab').forEach(t => t.classList.remove('active'));
@@ -4331,6 +4348,7 @@
     // 路径分流缓存：在 urlchange 时更新，避免 observer 回调中高频 querySelector
     let _isReleasePage = false;
     let _isRepoHome = false;
+    let _isUsefulPage = false;
     function updatePathCache() {
         const pathname = location.pathname;
         _isReleasePage = pathname.indexOf('/releases') > -1;
@@ -4339,6 +4357,13 @@
         // 元素存在即表明当前是仓库主页（Release 页面已通过 pathname 排除）
         _isRepoHome = !_isReleasePage &&
             document.querySelector('#repository-container-header') !== null;
+        // 非仓库/非 Release 的"纯无关页面"快速短路：避免全局 observer 在
+        // /features、/about、/trending、/login 等页面为每个 addedNode 空跑 tagName 匹配。
+        // 注意：路径上带 /releases、仓库主页、以及 /blob|/tree|/raw 等文件视图都可能受益，
+        // 其余明显无关的路径则直接跳过（relative-time 替换仍会保留）。
+        _isUsefulPage = _isReleasePage || _isRepoHome ||
+            /^\/([^/]+\/[^/]+\/)(blob|tree|raw|commits|pulls|issues)\//.test(pathname) ||
+            /^\/([^/]+\/[^/]+)$/.test(pathname); // 仓库根路径（无子路径）也算
     }
 
     function startGlobalObserver() {
@@ -4359,6 +4384,12 @@
                     if (target.nodeType !== 1) continue;
                     // 跳过脚本自身元素（快速短路，避免 expensive 查询）
                     if (isScriptNode(target)) continue;
+                    // 非相关页面快速短路：仅保留 relative-time 替换，跳过其余重分支，
+                    // 避免在 /features、/trending、/login 等页面为每个 addedNode 空跑 tagName 匹配
+                    if (!_isUsefulPage &&
+                        !(target.tagName === 'RELATIVE-TIME' && !target.hasAttribute('data-ghhelper-time'))) {
+                        continue;
+                    }
 
                     // ===== Release 页面：检测资产列表容器新增 =====
                     if (isReleasePage) {
