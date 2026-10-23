@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         发送到Aria2下载
 // @namespace    https://github.com/Liora-Wells/UserScript
-// @version      3.1.0
+// @version      3.2.0
 // @description  将链接发送到本地/远程 Aria2 下载，支持多服务器、批量、磁力、重命名、自定义路径、请求头、代理、任务历史、状态查询
 // @author       Liora-Wells
 // @match        *://*/*
