@@ -19,6 +19,7 @@
 // @grant        window.onurlchange
 // @sandbox      JavaScript
 // @connect      api.github.com
+// @connect      *
 // @license      MIT
 // @run-at       document-end
 // ==/UserScript==
@@ -54,6 +55,7 @@
         selectedArch: 'ghhelper_selected_arch',
         groupsCollapsed: 'ghhelper_proxy_groups_collapsed',
         defaultRawProxyId: 'ghhelper_default_raw_proxy_id',
+        remoteProxyUrl: 'ghhelper_remote_proxy_url',
         debug: 'ghhelper_debug'
     };
 
@@ -83,27 +85,27 @@
         { value: 'riscv64', label: 'riscv64' }
     ];
 
-    // 内置加速源（2026-11 更新：基于社区实测，移除失效源，换成更稳定的一批）
+    // 内置加速源（按设计文档精简）
     const BUILTIN_PROXIES = [
         // 下载/ZIP 加速
-        { id: 'builtin_dl_1', type: 'download', url: 'https://gh-proxy.org/https://github.com', name: '美国1', desc: '[GH-Proxy Cloudflare CDN，稳定]', region: '美国', enabled: true, builtIn: true },
-        { id: 'builtin_dl_2', type: 'download', url: 'https://gh.llkk.cc/https://github.com', name: '美国2', desc: '[Cloudflare Worker，较稳定]', region: '美国', enabled: true, builtIn: true },
-        { id: 'builtin_dl_3', type: 'download', url: 'https://ghproxy.net/https://github.com', name: '日本', desc: '[Cloudflare CDN，小文件稳定]', region: '日本', enabled: true, builtIn: true },
-        { id: 'builtin_dl_4', type: 'download', url: 'https://ghfast.top/https://github.com', name: '韩国', desc: '[CDN 不固定，实测稳定]', region: '韩国', enabled: true, builtIn: true },
-        { id: 'builtin_dl_5', type: 'download', url: 'https://gh-proxy.com/https://github.com', name: '全球', desc: '[GH-Proxy Anycast，功能最全]', region: '全球', enabled: true, builtIn: true },
-        { id: 'builtin_dl_6', type: 'download', url: 'https://hk.gh-proxy.org/https://github.com', name: '香港', desc: '[香港 Cloudflare CDN]', region: '香港', enabled: true, builtIn: true },
-        { id: 'builtin_dl_7', type: 'download', url: 'https://gh.catmak.name/https://github.com', name: '备用', desc: '[Cloudflare CDN，作备用]', region: '备用', enabled: true, builtIn: true },
+        { id: 'builtin_dl_1', type: 'download', url: 'https://gh-proxy.org/https://github.com', name: '美国1', desc: '[美国 Cloudflare CDN]', region: '美国', enabled: true, builtIn: true },
+        { id: 'builtin_dl_2', type: 'download', url: 'https://gh.h233.eu.org/https://github.com', name: '美国2', desc: '[美国 Cloudflare CDN]', region: '美国', enabled: true, builtIn: true },
+        { id: 'builtin_dl_3', type: 'download', url: 'https://ghproxy.net/https://github.com', name: '日本', desc: '[日本 Cloudflare CDN]', region: '日本', enabled: true, builtIn: true },
+        { id: 'builtin_dl_4', type: 'download', url: 'https://ghfast.top/https://github.com', name: '韩国', desc: '[韩国 CDN 不固定]', region: '韩国', enabled: true, builtIn: true },
+        { id: 'builtin_dl_5', type: 'download', url: 'https://wget.la/https://github.com', name: '香港', desc: '[香港 CDN 不固定]', region: '香港', enabled: true, builtIn: true },
+        { id: 'builtin_dl_6', type: 'download', url: 'https://hk.gh-proxy.org/https://github.com', name: '香港2', desc: '[香港 Cloudflare CDN]', region: '香港', enabled: true, builtIn: true },
+        { id: 'builtin_dl_7', type: 'download', url: 'https://gh.catmak.name/https://github.com', name: '韩国2', desc: '[韩国 Cloudflare CDN]', region: '韩国', enabled: true, builtIn: true },
         // Raw 加速
-        { id: 'builtin_raw_1', type: 'raw', url: 'https://fastly.jsdelivr.net/gh', name: 'JSDelivr', desc: '[JSDelivr CDN，有50MB限制]', region: '全球', enabled: true, builtIn: true },
-        { id: 'builtin_raw_2', type: 'raw', url: 'https://gh-proxy.org/https://raw.githubusercontent.com', name: '美国', desc: '[GH-Proxy Cloudflare CDN]', region: '美国', enabled: true, builtIn: true },
-        { id: 'builtin_raw_3', type: 'raw', url: 'https://gh-proxy.com/https://raw.githubusercontent.com', name: '全球', desc: '[GH-Proxy Anycast，功能最全]', region: '全球', enabled: true, builtIn: true },
-        { id: 'builtin_raw_4', type: 'raw', url: 'https://ghfast.top/https://raw.githubusercontent.com', name: '韩国', desc: '[CDN 不固定，实测稳定]', region: '韩国', enabled: true, builtIn: true },
-        { id: 'builtin_raw_5', type: 'raw', url: 'https://gh.llkk.cc/https://raw.githubusercontent.com', name: '备用', desc: '[Cloudflare Worker，备用]', region: '备用', enabled: true, builtIn: true },
+        { id: 'builtin_raw_1', type: 'raw', url: 'https://fastly.jsdelivr.net/gh', name: '日本', desc: '[JSDelivr CDN，有50MB限制]', region: '日本', enabled: true, builtIn: true },
+        { id: 'builtin_raw_2', type: 'raw', url: 'https://gh-proxy.org/https://raw.githubusercontent.com', name: '美国', desc: '[美国 Cloudflare CDN]', region: '美国', enabled: true, builtIn: true },
+        { id: 'builtin_raw_3', type: 'raw', url: 'https://wget.la/https://raw.githubusercontent.com', name: '香港', desc: '[香港 CDN 不固定]', region: '香港', enabled: true, builtIn: true },
+        { id: 'builtin_raw_4', type: 'raw', url: 'https://ghfast.top/https://raw.githubusercontent.com', name: '韩国', desc: '[韩国 CDN 不固定]', region: '韩国', enabled: true, builtIn: true },
+        { id: 'builtin_raw_5', type: 'raw', url: 'https://gh.catmak.name/https://raw.githubusercontent.com', name: '韩国2', desc: '[韩国 Cloudflare CDN]', region: '韩国', enabled: true, builtIn: true },
         // Clone 加速（复用下载源）
-        { id: 'builtin_clone_1', type: 'clone', url: 'https://gh-proxy.com/https://github.com', name: '全球', desc: '[GH-Proxy，支持 git clone]', region: '全球', enabled: true, builtIn: true },
-        { id: 'builtin_clone_2', type: 'clone', url: 'https://gh.llkk.cc/https://github.com', name: '美国', desc: '[Cloudflare Worker，备用]', region: '美国', enabled: true, builtIn: true },
-        { id: 'builtin_clone_3', type: 'clone', url: 'https://hk.gh-proxy.org/https://github.com', name: '香港', desc: '[香港 Cloudflare CDN]', region: '香港', enabled: true, builtIn: true },
-        { id: 'builtin_clone_4', type: 'clone', url: 'https://ghfast.top/https://github.com', name: '韩国', desc: '[CDN 不固定，实测稳定]', region: '韩国', enabled: true, builtIn: true },
+        { id: 'builtin_clone_1', type: 'clone', url: 'https://gitclone.com', name: '国内', desc: '[中国 国内 GitClone]', region: '国内', enabled: true, builtIn: true },
+        { id: 'builtin_clone_2', type: 'clone', url: 'https://wget.la/https://github.com', name: '香港', desc: '[香港 CDN 不固定]', region: '香港', enabled: true, builtIn: true },
+        { id: 'builtin_clone_3', type: 'clone', url: 'https://hk.gh-proxy.org/https://github.com', name: '香港2', desc: '[香港 Cloudflare CDN]', region: '香港', enabled: true, builtIn: true },
+        { id: 'builtin_clone_4', type: 'clone', url: 'https://ghfast.top/https://github.com', name: '韩国', desc: '[韩国 CDN 不固定]', region: '韩国', enabled: true, builtIn: true },
         // SSH Clone
         { id: 'builtin_ssh_1', type: 'ssh', url: 'ssh://git@ssh.github.com:443/', name: '官方', desc: '[GitHub 443端口SSH]', region: '官方', enabled: true, builtIn: true }
     ];
@@ -175,6 +177,15 @@
 
         setDebugEnabled(val) {
             this.set(STORAGE_KEYS.debug, !!val);
+        },
+
+        // 远程加速源列表 URL（用户填写的 JSON 地址，形如 https://host/nodes.json）
+        getRemoteProxyUrl() {
+            return this.get(STORAGE_KEYS.remoteProxyUrl, '');
+        },
+
+        setRemoteProxyUrl(url) {
+            this.set(STORAGE_KEYS.remoteProxyUrl, (url || '').trim());
         },
 
         // 统一列表（内置+自定义），从 storage 读取
@@ -322,7 +333,16 @@
         },
 
         getEnabled(type) {
-            return this.getAll().filter(p => p.enabled && (p.type === type || p.type === 'all'));
+            const local = this.getAll().filter(p => p.enabled && (p.type === type || p.type === 'all'));
+            // 远程加速源（transient）：仅参与展示/加速，不落库、不在设置页可编辑
+            if (typeof RemoteProxyManager !== 'undefined') {
+                const remote = RemoteProxyManager.getList();
+                for (let i = 0; i < remote.length; i++) {
+                    const rp = remote[i];
+                    if (rp.enabled && (rp.type === type || rp.type === 'all')) local.push(rp);
+                }
+            }
+            return local;
         },
 
         addCustom(proxy) {
@@ -628,6 +648,168 @@
             StorageManager.setFeatures(Object.assign({}, DEFAULT_FEATURES));
             StorageManager.setMaxDisplay(6);
             // selectedOS/Arch/groupsCollapsed/defaultRawProxyId 保持 null/默认（get 时回退到默认值）
+        }
+    };
+
+    // ============================================================
+    // 4. 远程加速源管理器 (RemoteProxyManager)
+    // ============================================================
+    // 从用户填写的远程 JSON 地址拉取加速源列表（如 https://hubp.tbedu.top/nodes.json）。
+    // 兼容两种常见格式：
+    //   A) 扁平：{ "data": ["gh.dpik.top", "github.tbap.top", ...裸域名] }
+    //      → 每个裸域名视为一个"下载/通用"加速源，URL = "https://<域名>/"
+    //   B) 分用途：{ download: [...], raw: [...], clone: [...], ssh: [...] }
+    //      → 各自归入对应 type；元素可为字符串(URL) 或 [URL, 地区, 说明]
+    // 远程源标记 remote:true、builtIn:false，仅显示使用，不持久化为本地可编辑源。
+
+    const RemoteProxyManager = {
+        _list: null,        // 拉取并解析后的加速源数组（transient，不落盘）
+        _url: '',           // 当前已加载的远程 URL
+        _status: '',        // 最近一次拉取状态（用于设置页显示）
+        _lastError: '',
+
+        getList() { return this._list || []; },
+        getStatus() { return this._status; },
+        getLastError() { return this._lastError; },
+
+        // 归一化一条远程源 → 代理对象（或 null 跳过）
+        _normalize(raw, type) {
+            let url, name, region, desc;
+            if (typeof raw === 'string') {
+                url = raw;
+            } else if (Array.isArray(raw)) {
+                url = raw[0]; name = raw[1]; desc = raw[2];
+            } else if (raw && typeof raw === 'object') {
+                url = raw.url || raw.prefix || raw.value || raw.host || raw.domain;
+                name = raw.name; region = raw.region; desc = raw.desc || raw.remark;
+                if (raw.label) name = name || raw.label;
+            } else {
+                return null;
+            }
+            if (!url || typeof url !== 'string') return null;
+            url = url.trim();
+            if (!url) return null;
+            const t = type || 'download';
+            // 裸域名/裸主机（无 scheme）→ 按用途补全标准前缀：
+            //   download/clone → https://<host>/https://github.com
+            //   raw            → https://<host>/https://raw.githubusercontent.com
+            if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(url)) {
+                const host = url.replace(/^\/+|\/+$/g, '');
+                if (t === 'raw') url = 'https://' + host + '/https://raw.githubusercontent.com';
+                else url = 'https://' + host + '/https://github.com';
+            }
+            // 已是完整前缀（含 scheme）→ 保持原样；末尾无 / 则补，便于后续拼接
+            if (url.charAt(url.length - 1) !== '/') url += '/';
+            return {
+                id: 'remote_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 5),
+                type: t,
+                url,
+                name: name || url.replace(/^https?:\/\//, '').replace(/\/$/, ''),
+                region: region || '',
+                desc: desc || '',
+                enabled: true,
+                builtIn: false,
+                remote: true,
+                edited: false
+            };
+        },
+
+        // 解析 JSON，兼容扁平 data 数组 与 分用途 download/raw/clone/ssh
+        parse(json) {
+            const list = [];
+            const pushAll = (arr, type) => {
+                (Array.isArray(arr) ? arr : []).forEach(item => {
+                    const p = this._normalize(item, type);
+                    if (p) list.push(p);
+                });
+            };
+            if (Array.isArray(json)) {
+                pushAll(json, 'download');
+            } else if (json && typeof json === 'object') {
+                // 分用途：download/raw/clone/ssh 各自数组
+                const keys = ['download', 'raw', 'clone', 'ssh'];
+                const hasCategorized = keys.some(k => Array.isArray(json[k]));
+                if (hasCategorized) {
+                    keys.forEach(k => pushAll(json[k], k));
+                } else {
+                    // 扁平 data 数组（ghproxy-next 系）
+                    const dataArr = json.data || json.nodes || json.proxies || json.list;
+                    pushAll(dataArr, 'download');
+                    // 兼容 { "github": {...} } 这类罕见结构：忽略
+                }
+            }
+            this._list = list;
+            return list;
+        },
+
+        // 从远程 URL 拉取并解析（GM_xmlhttpRequest 优先，fetch 兜底）
+        fetch(url) {
+            const target = (url || '').trim();
+            this._lastError = '';
+            this._status = '获取中…';
+            if (!target) {
+                this._status = '未配置';
+                this._list = null;
+                this._url = '';
+                return Promise.resolve(null);
+            }
+            return new Promise((resolve) => {
+                const done = (ok, list, errMsg) => {
+                    if (ok && Array.isArray(list)) {
+                        this._list = list;
+                        this._url = target;
+                        this._status = '已加载 ' + list.length + ' 条';
+                        if (typeof ProxyManager !== 'undefined') ProxyManager._invalidateCache();
+                        LOG('RemoteProxyManager.fetch: 成功 ' + list.length + ' 条 @ ' + target);
+                    } else {
+                        this._status = '拉取失败';
+                        this._lastError = errMsg || '未知错误';
+                        LOG('RemoteProxyManager.fetch: 失败 - ' + (errMsg || '未知错误'));
+                    }
+                    resolve(this._list);
+                };
+                const onFail = () => done(false, null, '请求失败或超时');
+                try {
+                    if (typeof GM_xmlhttpRequest !== 'undefined') {
+                        let settled = false;
+                        const settle = (fn) => { if (!settled) { settled = true; fn(); } };
+                        GM_xmlhttpRequest({
+                            method: 'GET',
+                            url: target,
+                            timeout: 15000,
+                            onload: (res) => {
+                                if (res.status >= 200 && res.status < 300 && res.responseText) {
+                                    settle(() => {
+                                        try {
+                                            const json = JSON.parse(res.responseText);
+                                            done(true, this.parse(json), '');
+                                        } catch (e) { done(false, null, 'JSON 解析失败'); }
+                                    });
+                                } else {
+                                    settle(() => done(false, null, 'HTTP ' + (res.status || '?') + (res.responseText ? '，非 JSON' : '')));
+                                }
+                            },
+                            onerror: () => settle(onFail),
+                            ontimeout: () => settle(onFail)
+                        });
+                    } else {
+                        fetch(target).then(r => r.text()).then(text => {
+                            try { done(true, this.parse(JSON.parse(text)), ''); }
+                            catch (e) { done(false, null, 'JSON 解析失败'); }
+                        }).catch(onFail);
+                    }
+                } catch (e) {
+                    done(false, null, String(e && e.message || e));
+                }
+            });
+        },
+
+        // 清空远程源（用户删除 URL 或清空时调用）
+        clear() {
+            this._list = null;
+            this._url = '';
+            this._status = '未配置';
+            if (typeof ProxyManager !== 'undefined') ProxyManager._invalidateCache();
         }
     };
 
@@ -3109,6 +3291,21 @@
             let html = warningBanner + '<div class="ghhelper-settings-section" data-ghhelper-nt="1">';
             html += '<h4 data-ghhelper-nt="1" style="margin:0 0 10px">加速源管理</h4>';
 
+            // 远程加速源（用户填写的 JSON 列表 URL，如 https://hubp.tbedu.top/nodes.json）
+            const remoteUrl = StorageManager.getRemoteProxyUrl();
+            html += '<div class="ghhelper-search-row" data-ghhelper-nt="1" style="margin-bottom:8px">';
+            html += '<input class="ghhelper-input ghhelper-search-input" id="ghhelper-remote-url" placeholder="📡 远程加速源 JSON 地址（留空则不启用）" value="' + (remoteUrl ? remoteUrl.replace(/"/g, '&quot;') : '') + '" data-ghhelper-nt="1">';
+            html += '<button class="ghhelper-btn ghhelper-btn-primary" id="ghhelper-remote-fetch" data-ghhelper-nt="1">获取</button>';
+            html += '<button class="ghhelper-btn" id="ghhelper-remote-clear" data-ghhelper-nt="1"' + (remoteUrl ? '' : ' disabled') + '>清除</button>';
+            html += '</div>';
+            const rStatus = RemoteProxyManager.getStatus();
+            html += '<div data-ghhelper-nt="1" style="margin-bottom:10px;font-size:12px;color:var(--fgColor-muted,var(--color-fg-muted))">';
+            html += '远程状态：' + (typeof RemoteProxyManager !== 'undefined' ? (rStatus || '未加载') : '未加载');
+            if (RemoteProxyManager.getLastError()) {
+                html += '（' + RemoteProxyManager.getLastError() + '）';
+            }
+            html += '　支持格式：<code>{"data":["域名",...]}</code> 或 <code>{"download":[...],"raw":[...],"clone":[...],"ssh":[...]}</code></div>';
+
             // 第一行：搜索框 + 操作按钮
             html += '<div class="ghhelper-search-row" data-ghhelper-nt="1">';
             html += '<input class="ghhelper-input ghhelper-search-input" id="ghhelper-search" placeholder="🔍 搜索名称/URL/地区/备注" data-ghhelper-nt="1">';
@@ -3167,6 +3364,33 @@
                 if (this._searchTimer) { clearTimeout(this._searchTimer); this._searchTimer = null; }
                 this._setFilter('keyword', '');
             });
+
+            // 远程加速源：获取 / 清除
+            const remoteUrlInput = document.getElementById('ghhelper-remote-url');
+            const remoteFetchBtn = document.getElementById('ghhelper-remote-fetch');
+            const remoteClearBtn = document.getElementById('ghhelper-remote-clear');
+            if (remoteFetchBtn) {
+                remoteFetchBtn.addEventListener('click', () => {
+                    const url = (remoteUrlInput ? remoteUrlInput.value : '').trim();
+                    StorageManager.setRemoteProxyUrl(url);
+                    const _rBtn = remoteFetchBtn;
+                    if (_rBtn) { _rBtn.disabled = true; _rBtn.textContent = '获取中…'; }
+                    RemoteProxyManager.fetch(url).then(() => {
+                        if (remoteClearBtn) remoteClearBtn.disabled = !url;
+                        this.renderTab('proxies');
+                        DOMRenderer.reprocessAll();
+                    });
+                });
+            }
+            if (remoteClearBtn) {
+                remoteClearBtn.addEventListener('click', () => {
+                    StorageManager.setRemoteProxyUrl('');
+                    if (remoteUrlInput) remoteUrlInput.value = '';
+                    RemoteProxyManager.clear();
+                    this.renderTab('proxies');
+                    DOMRenderer.reprocessAll();
+                });
+            }
 
             document.getElementById('ghhelper-add-proxy').addEventListener('click', () => {
                 this._showAddForm();
@@ -4241,6 +4465,11 @@
                 routeByPathname();
                 _routeRetryCount = 0;
                 _scheduleRouteRetry();
+                // 若配置了远程加速源 URL，启动时拉取一次（失败不阻塞主流程）
+                if (typeof RemoteProxyManager !== 'undefined') {
+                    const rUrl = StorageManager.getRemoteProxyUrl();
+                    if (rUrl) RemoteProxyManager.fetch(rUrl);
+                }
             } catch (e) {
                 LOG('init 异常:', e.message);
             }
